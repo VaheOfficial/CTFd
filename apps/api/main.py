@@ -5,7 +5,7 @@ from fastapi.security import HTTPBearer
 import os
 
 from src.database import engine, Base
-from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard
+from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, admin_ai
 from src.utils.logging import setup_logging
 
 # Setup logging
@@ -51,6 +51,7 @@ app.include_router(submissions.router, prefix="/api", tags=["Submissions"])
 app.include_router(artifacts.router, prefix="/api", tags=["Artifacts"])
 app.include_router(leaderboard.router, prefix="/api", tags=["Leaderboard"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(admin_ai.router, prefix="/api/admin/ai", tags=["AI Generation"])
 
 @app.get("/api/health")
 async def health_check():

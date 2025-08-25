@@ -8,6 +8,7 @@ from .leaderboard import LeaderboardSnapshot
 from .audit import AuditLog
 from .lab import LabTemplate, LabInstance
 from .config import ConfigKV
+from .generation import GenerationPlan
 
 __all__ = [
     "User",
@@ -28,5 +29,6 @@ __all__ = [
     "AuditLog",
     "LabTemplate",
     "LabInstance",
-    "ConfigKV"
+    "ConfigKV",
+    "GenerationPlan"
 ]

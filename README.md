@@ -4,14 +4,39 @@ A self-hosted CTF platform optimized for **Defensive Cyberspace Operations (DCO)
 
 ## Features
 
-- **DCO-First Design**: Short challenges (20-60 min) focused on threat detection, artifact analysis, and defensive operations
-- **Dynamic Flags**: HMAC-based flag generation prevents flag sharing
-- **Live Labs**: Optional ephemeral container environments via Docker orchestration
-- **Seasonal Structure**: 8-week seasons with weekly challenge drops
-- **Gamification**: Badges, streaks, leaderboards, and first-blood tracking
-- **Multi-Format Artifacts**: PCAP, logs, memory dumps, binaries, and more
-- **Deliverable System**: Accept Sigma rules, YARA rules, and analysis reports
-- **Admin-Friendly**: One-command challenge publishing and automatic scoring
+### 🤖 **AI Challenge Generation**
+- **GPT-5 + Claude Integration**: Dual-provider system with automatic fallback
+- **Prompt-to-Challenge**: Generate complete challenges from natural language prompts
+- **Deterministic Artifacts**: 11 built-in generators for realistic forensics scenarios
+- **Schema Validation**: Strict JSON validation ensures consistent challenge structure
+- **Safety Controls**: Content filtering and rate limiting for responsible AI use
+
+### 🛡️ **DCO-First Design**
+- **Short challenges** (20-60 min) focused on threat detection and defensive operations
+- **Artifact-driven**: PCAP, logs, memory dumps, binaries, email samples, cloud configs
+- **Deliverable system**: Accept Sigma rules, YARA rules, KQL queries, and analysis reports
+- **Blue Star/Red Spark** badge system for defensive vs offensive achievements
+
+### 🔐 **Security & Operations**
+- **Dynamic HMAC flags**: User-specific flags prevent sharing
+- **Validator containers**: Sandboxed execution with network isolation
+- **Live labs**: Optional ephemeral Docker environments via Kasm/VPN
+- **Rate limiting**: Comprehensive rate limiting on submissions, hints, and AI generation
+- **Audit logging**: Full activity tracking for admin actions
+
+### 🏆 **Gamification**
+- **Seasonal structure**: 8-week seasons with weekly challenge drops
+- **Leaderboards**: Live scoring with tie-breaking rules
+- **Badge system**: First blood, streaks, deliverable achievements
+- **Hint system**: Strategic point deductions for guided assistance
+- **Email notifications**: Weekly drops, first blood alerts, leaderboard updates
+
+### ⚡ **Admin Experience**
+- **One-command publishing**: `make publish CHAL=path/to/challenge`
+- **AI generation**: Paste prompt → get complete challenge with artifacts
+- **Dry-run validation**: Test challenges before publishing
+- **Automatic artifact uploads**: SHA256 verification and S3 storage
+- **Season management**: Create seasons, weeks, and schedule challenges
 
 ## Architecture
 
