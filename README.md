@@ -45,12 +45,12 @@ A self-hosted CTF platform optimized for **Defensive Cyberspace Operations (DCO)
 │   Next.js Web   │    │   FastAPI API   │    │  Celery Worker  │
 │   (Port 3000)   │────│   (Port 8000)   │────│   (Validators)  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
+         │                       │                      │
          │              ┌─────────────────┐             │
          │              │   PostgreSQL    │             │
          │              │   (Port 5432)   │             │
          │              └─────────────────┘             │
-         │                                               │
+         │                                              │
          │              ┌─────────────────┐             │
          └──────────────│     Redis       │─────────────┘
                         │   (Port 6379)   │
