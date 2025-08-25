@@ -1,0 +1,49 @@
+{$DOMAIN:localhost} {
+    # Main app routes
+    handle_path /api/* {
+        reverse_proxy api:8000
+    }
+    
+    handle_path /minio/* {
+        reverse_proxy minio:9000
+    }
+    
+    handle {
+        reverse_proxy web:3000
+    }
+
+    # Security headers
+    header {
+        # Enable HSTS
+        Strict-Transport-Security max-age=31536000;
+        # Prevent MIME type sniffing
+        X-Content-Type-Options nosniff
+        # Prevent clickjacking
+        X-Frame-Options DENY
+        # XSS protection
+        X-XSS-Protection "1; mode=block"
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Remove server header
+        -Server
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+    }
+}
+
+# MinIO Console (admin interface)
+minio.{$DOMAIN:localhost} {
+    reverse_proxy minio:9001
+    
+    # Basic auth for admin access
+    basicauth {
+        admin $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNqzKB1TK5T1MFeZM7F3JsGwm
+    }
+}

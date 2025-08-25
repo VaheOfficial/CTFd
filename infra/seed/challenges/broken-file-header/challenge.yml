@@ -1,0 +1,33 @@
+id: "broken-file-header"
+title: "Broken File Header"
+track: DETECT_FORENSICS
+difficulty: EASY
+points:
+  base: 100
+time_cap_minutes: 30
+mode: "solo"
+window:
+  open_relative_to_week: +0d
+  close_relative_to_week: +7d
+
+artifacts:
+  - path: artifacts/corrupted_image.jpg
+    kind: image
+
+hints:
+  - cost_percent: 15
+    text: "Check the file signature - something doesn't match the extension."
+  - cost_percent: 25
+    text: "Use a hex editor to examine the first few bytes of the file."
+
+flag:
+  type: "static"
+  format: "flag{{}}"
+  static_value: "flag{magic_number_mismatch}"
+
+deliverables:
+  - type: "notes"
+
+scoring:
+  hint_deduction_percent: 15
+  tie_breakers: ["fastest_correct", "fewest_hints", "earliest_enroll"]

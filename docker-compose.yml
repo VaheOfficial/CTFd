@@ -1,0 +1,206 @@
+version: '3.8'
+
+networks:
+  core-net:
+    driver: bridge
+    internal: false
+  lab-net:
+    driver: bridge
+    internal: true
+  ctegw:
+    driver: bridge
+    internal: false
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+
+services:
+  # Reverse Proxy
+  caddy:
+    image: caddy:2.7-alpine
+    container_name: cte-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ctegw
+      - core-net
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    depends_on:
+      - web
+      - api
+
+  # Web Frontend
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: ${NODE_ENV:-development}
+    container_name: cte-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - core-net
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      - api
+
+  # API Backend
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: ${NODE_ENV:-development}
+    container_name: cte-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - core-net
+      - lab-net
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://cte:cte123@postgres:5432/cte}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minio}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minio123}
+      - S3_BUCKET=${S3_BUCKET:-cte-artifacts}
+      - HMAC_SECRET=${HMAC_SECRET:-change_me_32_char_secret_12345}
+      - JWT_SECRET=${JWT_SECRET:-change_me_jwt_secret_123456789}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - KASM_API_URL=${KASM_API_URL:-}
+      - KASM_API_TOKEN=${KASM_API_TOKEN:-}
+      - WIREGUARD_ADAPTER_URL=${WIREGUARD_ADAPTER_URL:-}
+      - PYTHONPATH=/app
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  # Worker
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: ${NODE_ENV:-development}
+    container_name: cte-worker
+    restart: unless-stopped
+    volumes:
+      - ./apps/worker:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - core-net
+      - lab-net
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://cte:cte123@postgres:5432/cte}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minio}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minio123}
+      - S3_BUCKET=${S3_BUCKET:-cte-artifacts}
+      - HMAC_SECRET=${HMAC_SECRET:-change_me_32_char_secret_12345}
+      - PYTHONPATH=/app
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: cte-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - core-net
+    environment:
+      - POSTGRES_DB=cte
+      - POSTGRES_USER=cte
+      - POSTGRES_PASSWORD=cte123
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cte -d cte"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: cte-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - core-net
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: cte-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - core-net
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY:-minio}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY:-minio123}
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MinIO Setup (create bucket)
+  minio-setup:
+    image: minio/mc:latest
+    container_name: cte-minio-setup
+    networks:
+      - core-net
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      /usr/bin/mc alias set minio http://minio:9000 ${S3_ACCESS_KEY:-minio} ${S3_SECRET_KEY:-minio123};
+      /usr/bin/mc mb minio/${S3_BUCKET:-cte-artifacts} --ignore-existing;
+      /usr/bin/mc policy set public minio/${S3_BUCKET:-cte-artifacts};
+      exit 0;
+      "
+
+volumes:
+  caddy_data:
+  caddy_config:

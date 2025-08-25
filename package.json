@@ -1,0 +1,27 @@
+{
+  "name": "cte-platform",
+  "version": "1.0.0",
+  "description": "Self-hosted CTF platform optimized for Defensive Cyberspace Operations",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter web dev\" \"pnpm --filter api dev\"",
+    "build": "pnpm --recursive build",
+    "lint": "pnpm --recursive lint",
+    "type-check": "pnpm --recursive type-check",
+    "test": "pnpm --recursive test",
+    "seed": "cd apps/api && python scripts/seed.py",
+    "publish-challenge": "cd apps/api && python scripts/publish_challenge.py"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
