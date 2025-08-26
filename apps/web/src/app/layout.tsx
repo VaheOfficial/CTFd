@@ -14,6 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
   title: 'CTE Platform - Defensive Cyber Operations',
   description: 'Self-hosted CTF platform optimized for Defensive Cyberspace Operations with AI-generated challenges',
   keywords: ['CTF', 'cybersecurity', 'defensive operations', 'hacking', 'cyber defense'],
