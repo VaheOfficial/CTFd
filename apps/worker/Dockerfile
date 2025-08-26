@@ -1,4 +1,4 @@
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 WORKDIR /app
 
@@ -15,11 +15,11 @@ COPY apps/worker/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Development stage
-FROM base as development
+FROM base AS development
 COPY apps/worker/ .
-CMD ["celery", "worker", "-A", "main", "--loglevel=info", "--reload"]
+CMD ["celery", "-A", "main", "worker", "--loglevel=info"]
 
 # Production stage
-FROM base as production
+FROM base AS production
 COPY apps/worker/ .
-CMD ["celery", "worker", "-A", "main", "--loglevel=info"]
+CMD ["celery", "-A", "main", "worker", "--loglevel=info"]

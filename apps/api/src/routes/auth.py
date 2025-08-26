@@ -80,7 +80,7 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
             "id": str(user.id),
             "username": user.username,
             "email": user.email,
-            "role": user.role
+            "role": user.role.value  # Convert enum to string value
         }
     )
 
@@ -126,7 +126,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             "id": str(user.id),
             "username": user.username,
             "email": user.email,
-            "role": user.role
+            "role": user.role.value  # Convert enum to string value
         }
     )
 
@@ -137,7 +137,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "id": str(current_user.id),
         "username": current_user.username,
         "email": current_user.email,
-        "role": current_user.role,
+        "role": current_user.role.value,  # Convert enum to string value
         "totp_enabled": bool(current_user.totp_secret),
         "created_at": current_user.created_at,
         "last_login": current_user.last_login

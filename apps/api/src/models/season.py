@@ -13,6 +13,7 @@ class Season(Base):
     name = Column(String(100), nullable=False)
     start_at = Column(DateTime(timezone=True), nullable=False)
     end_at = Column(DateTime(timezone=True), nullable=False)
+    total_weeks = Column(Integer, nullable=False, default=8)
     description = Column(Text, nullable=True)
     theme = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

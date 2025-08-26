@@ -14,13 +14,13 @@
     "lint": "eslint src --ext .ts"
   },
   "devDependencies": {
-    "@types/node": "^20.10.5",
-    "typescript": "^5.3.3",
-    "eslint": "^8.56.0",
-    "@typescript-eslint/eslint-plugin": "^6.16.0",
-    "@typescript-eslint/parser": "^6.16.0"
+    "@types/node": "^20.19.11",
+    "typescript": "^5.9.2",
+    "eslint": "^8.57.1",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0"
   },
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "^3.25.76"
   }
 }

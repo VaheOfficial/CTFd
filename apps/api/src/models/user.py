@@ -33,7 +33,7 @@ class User(Base):
     submissions = relationship("Submission", back_populates="user", cascade="all, delete-orphan")
     authored_challenges = relationship("Challenge", back_populates="author")
     awards = relationship("Award", back_populates="user", cascade="all, delete-orphan")
-    writeups = relationship("WriteUp", back_populates="author", cascade="all, delete-orphan")
+    writeups = relationship("WriteUp", back_populates="author", foreign_keys="WriteUp.author_user_id", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="actor")
 
 class Team(Base):

@@ -21,4 +21,4 @@ class WriteUp(Base):
     # Relationships
     challenge = relationship("Challenge", back_populates="writeups")
     author = relationship("User", back_populates="writeups", foreign_keys=[author_user_id])
-    approver = relationship("User", foreign_keys=[approved_by])
+    approver = relationship("User", foreign_keys=[approved_by], post_update=True)

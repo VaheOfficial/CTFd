@@ -24,9 +24,9 @@ router = APIRouter()
 
 class GenerateChallengeRequest(BaseModel):
     prompt: str = Field(..., min_length=10, max_length=2000)
-    preferred_provider: Optional[str] = Field(None, regex="^(gpt5|claude|auto)$")
-    difficulty: Optional[str] = Field(None, regex="^(EASY|MEDIUM|HARD|INSANE)$")
-    track: Optional[str] = Field(None, regex="^(INTEL_RECON|ACCESS_EXPLOIT|IDENTITY_CLOUD|C2_EGRESS|DETECT_FORENSICS)$")
+    preferred_provider: Optional[str] = Field(None, pattern="^(gpt5|claude|auto)$")
+    difficulty: Optional[str] = Field(None, pattern="^(EASY|MEDIUM|HARD|INSANE)$")
+    track: Optional[str] = Field(None, pattern="^(INTEL_RECON|ACCESS_EXPLOIT|IDENTITY_CLOUD|C2_EGRESS|DETECT_FORENSICS)$")
     seed: Optional[int] = Field(None, ge=1, le=999999)
 
 class GenerateChallengeResponse(BaseModel):

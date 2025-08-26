@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 
 from ..database import get_db
@@ -21,6 +21,7 @@ class SeasonResponse(BaseModel):
     name: str
     start_at: datetime
     end_at: datetime
+    total_weeks: int
     description: Optional[str]
     theme: Optional[str]
     is_active: bool
@@ -38,8 +39,8 @@ class WeekResponse(BaseModel):
 
 class CreateSeasonRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    start_at: datetime
-    end_at: datetime
+    start_date: str = Field(..., description="Start date in YYYY-MM-DD format")
+    total_weeks: int = Field(..., ge=1, le=52, description="Total number of weeks for the season")
     description: Optional[str] = Field(None, max_length=1000)
     theme: Optional[str] = Field(None, max_length=100)
 
@@ -81,6 +82,7 @@ async def get_seasons(
             name=season.name,
             start_at=season.start_at,
             end_at=season.end_at,
+            total_weeks=season.total_weeks,
             description=season.description,
             theme=season.theme,
             is_active=is_active,
@@ -97,17 +99,24 @@ async def create_season(
 ):
     """Create a new season (admin only)"""
     
-    # Validate dates
-    if request.start_at >= request.end_at:
+    # Parse start date and calculate end date
+    try:
+        start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
+        # Calculate end date: start_date + (total_weeks * 7 days) - 1 day
+        # This ensures the season ends on the last day of the final week
+        end_date = start_date + timedelta(weeks=request.total_weeks) - timedelta(days=1)
+        # Set time to end of day for end_date
+        end_date = end_date.replace(hour=23, minute=59, second=59)
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Start date must be before end date"
+            detail="Invalid start_date format. Use YYYY-MM-DD"
         )
     
     # Check for overlapping seasons
     existing_season = db.query(Season).filter(
-        Season.start_at < request.end_at,
-        Season.end_at > request.start_at
+        Season.start_at < end_date,
+        Season.end_at > start_date
     ).first()
     
     if existing_season:
@@ -119,8 +128,9 @@ async def create_season(
     # Create season
     season = Season(
         name=request.name,
-        start_at=request.start_at,
-        end_at=request.end_at,
+        start_at=start_date,
+        end_at=end_date,
+        total_weeks=request.total_weeks,
         description=request.description,
         theme=request.theme
     )
@@ -132,11 +142,17 @@ async def create_season(
     logger.info("Season created",
                season_id=str(season.id),
                name=season.name,
+               total_weeks=season.total_weeks,
+               start_date=start_date.isoformat(),
+               end_date=end_date.isoformat(),
                admin_id=str(current_user.id))
     
     return {
         "season_id": str(season.id),
         "name": season.name,
+        "total_weeks": season.total_weeks,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
         "status": "created"
     }
 

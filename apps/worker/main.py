@@ -4,6 +4,7 @@ import os
 # Create Celery app
 app = Celery(
     'cte-worker',
+    broker_connection_retry_on_startup=True,
     broker=os.getenv('REDIS_URL', 'redis://localhost:6379'),
     backend=os.getenv('REDIS_URL', 'redis://localhost:6379'),
     include=['tasks.validators', 'tasks.labs', 'tasks.notifications']

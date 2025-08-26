@@ -1,12 +1,28 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
+import { Providers } from '@/lib/providers'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ 
+  subsets: ['latin'],
+  variable: '--font-sans',
+})
+
+const jetbrainsMono = JetBrains_Mono({ 
+  subsets: ['latin'],
+  variable: '--font-mono',
+})
 
 export const metadata: Metadata = {
-  title: 'CTE Platform',
-  description: 'Self-hosted CTF platform optimized for Defensive Cyberspace Operations',
+  title: 'CTE Platform - Defensive Cyber Operations',
+  description: 'Self-hosted CTF platform optimized for Defensive Cyberspace Operations with AI-generated challenges',
+  keywords: ['CTF', 'cybersecurity', 'defensive operations', 'hacking', 'cyber defense'],
+  authors: [{ name: 'CTE Platform Team' }],
+  openGraph: {
+    title: 'CTE Platform - Defensive Cyber Operations',
+    description: 'Master defensive cybersecurity through hands-on CTF challenges',
+    type: 'website',
+  },
 }
 
 export default function RootLayout({
@@ -15,11 +31,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <div className="min-h-screen bg-background">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`} suppressHydrationWarning>
+        <Providers>
           {children}
-        </div>
+        </Providers>
       </body>
     </html>
   )

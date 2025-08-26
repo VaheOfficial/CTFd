@@ -1,4 +1,4 @@
-.PHONY: help dev build seed clean publish snapshot backup restore logs
+.PHONY: help dev build seed clean publish snapshot backup restore logs install install-js install-python venv-api venv-worker clean-venv
 
 # Default target
 help:
@@ -19,6 +19,12 @@ help:
 	@echo "  make publish CHAL=path/to/challenge - Publish a challenge"
 	@echo "  make snapshot     - Generate leaderboard snapshot"
 	@echo ""
+	@echo "Setup & Dependencies:"
+	@echo "  make install      - Install all dependencies (JS + Python in venv)"
+	@echo "  make install-js   - Install JavaScript dependencies only"
+	@echo "  make install-python - Install Python dependencies in virtual environments"
+	@echo "  make clean-venv   - Remove Python virtual environments"
+	@echo ""
 	@echo "Maintenance:"
 	@echo "  make backup       - Backup database and artifacts"
 	@echo "  make restore FILE=backup.dump - Restore from backup"
@@ -34,7 +40,7 @@ seed:
 logs:
 	docker compose logs -f
 
-clean:
+clean: clean-venv
 	docker compose down --volumes --remove-orphans
 	docker system prune -f
 
@@ -54,7 +60,11 @@ ifndef CHAL
 	@echo "Error: Please specify CHAL=path/to/challenge"
 	@exit 1
 endif
-	python scripts/publish_challenge.py $(CHAL)
+	@if [ -f "venv/bin/activate" ]; then \
+		. venv/bin/activate && python scripts/publish_challenge.py $(CHAL); \
+	else \
+		python scripts/publish_challenge.py $(CHAL); \
+	fi
 
 snapshot:
 	docker compose exec api python -c "from src.routes.admin import generate_leaderboard_snapshot; generate_leaderboard_snapshot()"
@@ -82,33 +92,55 @@ endif
 	@echo "Database restored"
 
 # Install dependencies
-install:
+install: install-js install-python
+
+install-js:
 	pnpm install
-	cd apps/api && pip install -r requirements.txt
-	cd apps/worker && pip install -r requirements.txt
+
+install-python: venv-api venv-worker
+	@echo "Installing Python dependencies in virtual environments..."
+	cd apps/api && . venv/bin/activate && pip install -r requirements.txt
+	cd apps/worker && . venv/bin/activate && pip install -r requirements.txt
+
+# Create virtual environments
+venv-api:
+	@echo "Creating virtual environment for API..."
+	cd apps/api && python3 -m venv venv
+	cd apps/api && . venv/bin/activate && pip install --upgrade pip
+
+venv-worker:
+	@echo "Creating virtual environment for Worker..."
+	cd apps/worker && python3 -m venv venv
+	cd apps/worker && . venv/bin/activate && pip install --upgrade pip
+
+# Clean virtual environments
+clean-venv:
+	@echo "Removing virtual environments..."
+	rm -rf apps/api/venv
+	rm -rf apps/worker/venv
 
 # Linting and type checking
 lint:
 	pnpm run lint
-	cd apps/api && python -m flake8 src/
-	cd apps/worker && python -m flake8 tasks/
+	cd apps/api && . venv/bin/activate && python -m flake8 src/
+	cd apps/worker && . venv/bin/activate && python -m flake8 tasks/
 
 type-check:
 	pnpm run type-check
-	cd apps/api && python -m mypy src/
-	cd apps/worker && python -m mypy tasks/
+	cd apps/api && . venv/bin/activate && python -m mypy src/
+	cd apps/worker && . venv/bin/activate && python -m mypy tasks/
 
 # Testing
 test:
 	pnpm run test
-	cd apps/api && python -m pytest
-	cd apps/worker && python -m pytest
+	cd apps/api && . venv/bin/activate && python -m pytest
+	cd apps/worker && . venv/bin/activate && python -m pytest
 
 # Security
 security-scan:
 	@echo "Running security scans..."
-	cd apps/api && safety check
-	cd apps/worker && safety check
+	cd apps/api && . venv/bin/activate && safety check
+	cd apps/worker && . venv/bin/activate && safety check
 	pnpm audit
 
 # Generate SSL certificates for development
