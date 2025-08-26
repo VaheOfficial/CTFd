@@ -103,7 +103,7 @@ export function NavShell({ children }: { children: React.ReactNode }) {
                   <span>{item.name}</span>
                 </Link>
               )
-            })}
+            }) as React.ReactNode}
           </nav>
 
           {/* Admin/User Mode Toggle */}

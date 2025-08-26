@@ -8,6 +8,7 @@ from datetime import timedelta
 from ..database import get_db
 from ..models.user import User
 from ..models.challenge import Artifact, Challenge
+from ..models.season import WeekChallenge, Week
 from ..utils.auth import get_current_user
 from ..utils.logging import get_logger
 
@@ -39,13 +40,17 @@ async def download_artifact(
             detail="Challenge not found"
         )
     
-    # TODO: Check if user has access to this challenge (based on season/week schedule)
-    # For now, allow access if challenge is published
+    # Enforce access: must be published and within an open week mapping
     if challenge.status != "PUBLISHED":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Challenge not available"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Challenge not available")
+    mapping = db.query(WeekChallenge, Week).join(Week, WeekChallenge.week_id == Week.id).filter(
+        WeekChallenge.challenge_id == challenge.id
+    ).first()
+    if mapping:
+        _, wk = mapping
+        now = datetime.utcnow()
+        if not (wk.opens_at <= now <= wk.closes_at):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Challenge not currently open")
     
     try:
         # Setup S3 client

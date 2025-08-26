@@ -287,18 +287,6 @@ export default function AdminSeasonsPage() {
                             View
                           </Button>
                         </Link>
-                        <Link href={`/admin/seasons/${season.id}`}>
-                          <Button variant="outline" size="sm">
-                            <Edit className="h-4 w-4 mr-1" />
-                            Manage
-                          </Button>
-                        </Link>
-                        <Link href={`/admin/seasons/${season.id}/weeks`}>
-                          <Button size="sm">
-                            <Settings className="h-4 w-4 mr-1" />
-                            Weeks
-                          </Button>
-                        </Link>
                       </div>
                     </div>
                   </CardContent>

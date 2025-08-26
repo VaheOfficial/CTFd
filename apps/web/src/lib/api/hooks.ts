@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { toast } from 'sonner'
 
+// Re-export auth hooks from the new auth module
+export { useMe, useLogin, useSignup, useLogout, useAuth } from '@/lib/auth/hooks'
+
 // Query Keys
 export const queryKeys = {
   auth: ['auth'] as const,
@@ -19,71 +22,22 @@ export const queryKeys = {
   auditLogs: (filters: Record<string, any>) => ['audit', filters] as const,
 }
 
-// Auth Hooks
-export function useMe() {
-  return useQuery({
-    queryKey: queryKeys.me(),
-    queryFn: async () => {
-      const response = await apiClient.getMe()
-      if (response.error) {
-        throw new Error(response.error.message)
-      }
-      return response.data
-    },
-    retry: false,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  })
-}
-
-export function useLogin() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: apiClient.login.bind(apiClient),
-    onSuccess: (response: any) => {
-      if (response.data) {
-        // Invalidate and refetch user data
-        queryClient.invalidateQueries({ queryKey: queryKeys.auth })
-        toast.success('Logged in successfully')
-      }
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Login failed')
-    },
-  })
-}
-
-export function useSignup() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: apiClient.signup.bind(apiClient),
-    onSuccess: (response: any) => {
-      if (response.data) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.auth })
-        toast.success('Account created successfully')
-      }
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Signup failed')
-    },
-  })
-}
-
-
-
 // Challenge Hooks
-export function useChallenge(challengeId: string) {
+export function useChallenge(slugOrId: string) {
   return useQuery({
-    queryKey: queryKeys.challenge(challengeId),
+    queryKey: queryKeys.challenge(slugOrId),
     queryFn: async () => {
-      const response = await apiClient.getChallenge(challengeId)
+      // Prefer slug route; if 404, try by ID
+      let response = await apiClient.getChallengeBySlug(slugOrId)
+      if (response.error && response.error.status === 404) {
+        response = await apiClient.getChallengeById(slugOrId)
+      }
       if (response.error) {
         throw new Error(response.error.message)
       }
       return response.data
     },
-    enabled: !!challengeId,
+    enabled: !!slugOrId,
     staleTime: 2 * 60 * 1000, // 2 minutes
   })
 }
@@ -368,26 +322,6 @@ export function useDisableTotp() {
   })
 }
 
-export function useLogout() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () => {
-      await fetch('/api/auth/logout', { method: 'POST' })
-    },
-    onSuccess: () => {
-      apiClient.setToken(null)
-      queryClient.clear()
-      window.location.href = '/login'
-    },
-    onError: () => {
-      // Force logout even on error
-      apiClient.setToken(null)
-      queryClient.clear()
-      window.location.href = '/login'
-    }
-  })
-}
-
 // AI Generation Hooks
 export function useGenerateChallenge() {
   return useMutation({
@@ -432,6 +366,21 @@ export function usePublishChallenge() {
     onError: (error: any) => {
       toast.error(error.message || 'Failed to publish challenge')
     },
+  })
+}
+
+export function useSeason(seasonId: string) {
+  return useQuery({
+    queryKey: queryKeys.season(seasonId),
+    queryFn: async () => {
+      const response = await apiClient.getSeason(seasonId)
+      if (response.error) {
+        throw new Error(response.error.message)
+      }
+      return response.data
+    },
+    enabled: !!seasonId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
   })
 }
 
@@ -483,5 +432,48 @@ export function useSeasonWeeks(seasonId: string) {
     },
     enabled: !!seasonId,
     staleTime: 1 * 60 * 1000, // 1 minute
+  })
+}
+
+// Missing hooks
+export function useChallenges() {
+  return useQuery({
+    queryKey: queryKeys.challenges(),
+    queryFn: async () => {
+      const response = await apiClient.getChallenges()
+      if (response.error) {
+        throw new Error(response.error.message)
+      }
+      return response.data
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  })
+}
+
+export function useWeek(seasonId: string, weekIndex: number) {
+  return useQuery({
+    queryKey: ['week', seasonId, weekIndex],
+    queryFn: async () => {
+      const response = await apiClient.getSeasonWeeks(seasonId)
+      if (response.error) {
+        throw new Error(response.error.message)
+      }
+      const weeks = response.data as any[]
+      return weeks.find((w: any) => w.index === weekIndex)
+    },
+    enabled: !!seasonId && !!weekIndex,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  })
+}
+
+export function useWeekChallenges(seasonId: string, weekIndex: number) {
+  return useQuery({
+    queryKey: ['weekChallenges', seasonId, weekIndex],
+    queryFn: async () => {
+      // Placeholder implementation - this would need a proper API endpoint
+      return []
+    },
+    enabled: !!seasonId && !!weekIndex,
+    staleTime: 2 * 60 * 1000, // 2 minutes
   })
 }

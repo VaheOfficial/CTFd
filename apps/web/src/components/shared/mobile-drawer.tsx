@@ -123,7 +123,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                     {item.name}
                   </Link>
                 )
-              })}
+              }) as React.ReactNode}
               
               {/* Admin Toggle */}
               {isAdmin && (

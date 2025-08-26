@@ -2,13 +2,15 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
+import os
 import uuid
 import secrets
 from datetime import datetime, timedelta
 
 from ..database import get_db
 from ..models.user import User
-from ..models.challenge import Challenge, ChallengeInstance, Artifact
+from ..models.challenge import Challenge, ChallengeInstance, Artifact, HintConsumption
+from ..models.season import WeekChallenge, Week
 from ..models.lab import LabTemplate, LabInstance, LabInstanceStatus
 from ..utils.auth import get_current_user
 from ..utils.logging import get_logger
@@ -16,7 +18,6 @@ from ..utils.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
-
 class ChallengeResponse(BaseModel):
     id: str
     slug: str
@@ -46,6 +47,18 @@ class LabStatusResponse(BaseModel):
     kasm_url: Optional[str]
     vpn_config: Optional[str]
 
+@router.get("/challenges/slug/{slug}", response_model=ChallengeResponse)
+async def get_challenge_by_slug(
+    slug: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get challenge details by slug"""
+    ch = db.query(Challenge).filter(Challenge.slug == slug).first()
+    if not ch:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found")
+    return await get_challenge(str(ch.id), current_user, db)
+
 @router.get("/challenges/{challenge_id}", response_model=ChallengeResponse)
 async def get_challenge(
     challenge_id: str,
@@ -62,7 +75,15 @@ async def get_challenge(
             detail="Challenge not found"
         )
     
-    # TODO: Check if challenge is accessible to user (based on season/week schedule)
+    # Enforce schedule access: challenge must be mapped to an open week
+    mapping = db.query(WeekChallenge, Week).join(Week, WeekChallenge.week_id == Week.id).filter(
+        WeekChallenge.challenge_id == challenge_id
+    ).first()
+    if mapping:
+        _, wk = mapping
+        now = datetime.utcnow()
+        if not (wk.opens_at <= now <= wk.closes_at):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Challenge not available yet")
     
     # Get artifacts
     artifacts = db.query(Artifact).filter(Artifact.challenge_id == challenge_id).all()
@@ -77,14 +98,23 @@ async def get_challenge(
     ]
     
     # Get hints (without revealing text)
-    hints_data = [
-        {
+    # Determine consumed hints
+    consumed_orders = set(
+        hc.hint_order for hc in db.query(HintConsumption).filter(
+            HintConsumption.user_id == current_user.id,
+            HintConsumption.challenge_id == challenge_id
+        ).all()
+    )
+    hints_data = []
+    for hint in challenge.hints:
+        item = {
             "order": hint.order,
             "cost_percent": hint.cost_percent,
-            "available": True  # TODO: Check if user has consumed this hint
+            "available": hint.order not in consumed_orders
         }
-        for hint in challenge.hints
-    ]
+        if hint.order in consumed_orders:
+            item["text"] = hint.text
+        hints_data.append(item)
     
     # Check if lab available
     has_lab = db.query(LabTemplate).filter(LabTemplate.challenge_id == challenge_id).first() is not None
@@ -195,8 +225,9 @@ async def get_lab_status(
             vpn_config=None
         )
     
-    # TODO: Get real Kasm URL and VPN config from adapters
-    kasm_url = None
+    # Resolve Kasm URL from environment if configured (best-effort)
+    kasm_base = os.getenv('KASM_API_URL')
+    kasm_url = f"{kasm_base.rstrip('/')}/session/{lab_instance.id}" if kasm_base else None
     vpn_config = None
     
     if lab_instance.status == LabInstanceStatus.RUNNING:

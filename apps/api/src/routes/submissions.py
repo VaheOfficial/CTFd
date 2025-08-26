@@ -7,7 +7,8 @@ from datetime import datetime, timedelta
 
 from ..database import get_db
 from ..models.user import User
-from ..models.challenge import Challenge, ChallengeInstance, Hint, ValidatorConfig
+from ..models.challenge import Challenge, ChallengeInstance, Hint, ValidatorConfig, HintConsumption
+from ..models.season import WeekChallenge, Week
 from ..models.submission import Submission
 from ..utils.auth import get_current_user
 from ..utils.flags import verify_hmac_flag, verify_static_flag
@@ -75,6 +76,15 @@ async def submit_flag(
     
     # Get challenge
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    # Enforce schedule access: mapped to open week
+    mapping = db.query(WeekChallenge, Week).join(Week, WeekChallenge.week_id == Week.id).filter(
+        WeekChallenge.challenge_id == challenge_id
+    ).first()
+    if mapping:
+        _, wk = mapping
+        now = datetime.utcnow()
+        if not (wk.opens_at <= now <= wk.closes_at):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Challenge not available")
     if not challenge:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -195,8 +205,15 @@ async def submit_flag(
         base_points = challenge.points_base
         
         # Get consumed hints for this user/challenge
-        # TODO: Track hint consumption in separate table
-        hint_deduction = 0  # Placeholder
+        consumptions = db.query(HintConsumption).filter(
+            HintConsumption.user_id == current_user.id,
+            HintConsumption.challenge_id == challenge_id
+        ).all()
+        hint_deduction = sum(int(challenge.points_base * (db.query(Hint).filter(
+            Hint.challenge_id == challenge_id, Hint.order == hc.hint_order
+        ).first().cost_percent / 100)) for hc in consumptions if db.query(Hint).filter(
+            Hint.challenge_id == challenge_id, Hint.order == hc.hint_order
+        ).first() is not None)
         
         points_awarded = max(0, base_points - hint_deduction)
     
@@ -279,15 +296,28 @@ async def consume_hint(
             detail="Hint not found"
         )
     
-    # TODO: Check if hint already consumed (implement HintConsumption table)
-    # For now, allow multiple consumptions
+    # Idempotency: prevent duplicate consumption
+    existing = db.query(HintConsumption).filter(
+        HintConsumption.user_id == current_user.id,
+        HintConsumption.challenge_id == challenge_id,
+        HintConsumption.hint_order == hint_order
+    ).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Hint already consumed")
     
     # Calculate point deduction
     base_points = challenge.points_base
     points_deducted = int(base_points * (hint.cost_percent / 100))
     remaining_points = base_points - points_deducted
     
-    # TODO: Store hint consumption in database
+    # Store hint consumption
+    consumption = HintConsumption(
+        user_id=current_user.id,
+        challenge_id=challenge_id,
+        hint_order=hint_order
+    )
+    db.add(consumption)
+    db.commit()
     
     logger.info("Hint consumed",
                challenge_id=challenge_id,

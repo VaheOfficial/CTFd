@@ -135,3 +135,16 @@ class ValidatorConfig(Base):
 
     # Relationships
     challenge = relationship("Challenge", back_populates="validators")
+
+
+class HintConsumption(Base):
+    __tablename__ = "hint_consumptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    challenge_id = Column(UUID(as_uuid=True), ForeignKey("challenges.id"), nullable=False)
+    hint_order = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    challenge = relationship("Challenge")

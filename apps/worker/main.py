@@ -2,7 +2,7 @@ from celery import Celery
 import os
 
 # Create Celery app
-app = Celery(
+app = Celery( 
     'cte-worker',
     broker_connection_retry_on_startup=True,
     broker=os.getenv('REDIS_URL', 'redis://localhost:6379'),

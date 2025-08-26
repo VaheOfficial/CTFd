@@ -35,3 +35,16 @@ class Week(Base):
 
     # Relationships
     season = relationship("Season", back_populates="weeks")
+
+
+class WeekChallenge(Base):
+    __tablename__ = "week_challenges"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    week_id = Column(UUID(as_uuid=True), ForeignKey("weeks.id"), nullable=False)
+    challenge_id = Column(UUID(as_uuid=True), ForeignKey("challenges.id"), nullable=False)
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    week = relationship("Week")

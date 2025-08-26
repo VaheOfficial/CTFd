@@ -57,8 +57,10 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
             }
         
         elif lab_template.get('compose_yaml_s3_key'):
-            # Docker Compose mode (TODO: implement when needed)
-            raise NotImplementedError("Docker Compose lab templates not yet implemented")
+            # Compose mode: delegate to compose task
+            from .labs import start_lab_compose
+            compose_result = start_lab_compose.apply_async(args=[lab_template['compose_yaml_s3_key'], challenge_instance_id, env]).get()
+            result = compose_result
         
         else:
             raise ValueError("Lab template must specify either docker_image or compose_yaml_s3_key")
@@ -66,8 +68,32 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
         # Schedule automatic cleanup
         ttl_minutes = lab_template.get('ttl_minutes', 60)
         cleanup_at = datetime.utcnow() + timedelta(minutes=ttl_minutes)
-        
-        # TODO: Schedule cleanup task
+        try:
+            # Best-effort schedule global cleanup
+            from .labs import cleanup_expired_labs
+            cleanup_expired_labs.apply_async(countdown=ttl_minutes * 60)
+        except Exception:
+            pass
+
+        # Update DB LabInstance status
+        try:
+            import os, sys
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            from apps.api.src.database import SessionLocal
+            from apps.api.src.models.lab import LabInstance, LabInstanceStatus
+            db = SessionLocal()
+            try:
+                lab = db.query(LabInstance).filter(LabInstance.challenge_instance_id == challenge_instance_id).order_by(LabInstance.created_at.desc()).first()
+                if lab:
+                    lab.status = LabInstanceStatus.RUNNING
+                    lab.started_at = datetime.utcnow()
+                    lab.expires_at = cleanup_at
+                    lab.container_id = result.get('container_id') if isinstance(result, dict) else None
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass
         
         logger.info("Lab instance started",
                    challenge_instance_id=challenge_instance_id,
@@ -98,6 +124,24 @@ def stop_lab_instance(self, container_id: str):
         container = client.containers.get(container_id)
         container.stop(timeout=10)
         container.remove()
+        # Update DB status
+        try:
+            import os, sys
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            from apps.api.src.database import SessionLocal
+            from apps.api.src.models.lab import LabInstance, LabInstanceStatus
+            from datetime import datetime
+            db = SessionLocal()
+            try:
+                lab = db.query(LabInstance).filter(LabInstance.container_id == container_id).first()
+                if lab:
+                    lab.status = LabInstanceStatus.STOPPED
+                    lab.torn_down_at = datetime.utcnow()
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass
         
         logger.info("Lab instance stopped", container_id=container_id)
         

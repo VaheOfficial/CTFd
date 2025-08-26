@@ -286,15 +286,36 @@ async def create_leaderboard_snapshot(
         )
     
     try:
-        # TODO: Implement leaderboard calculation logic
-        # For now, create a placeholder snapshot
+        # Calculate leaderboard snapshot by season window
+        user_scores = db.query(
+            Submission.user_id,
+            func.sum(Submission.points_awarded).label('total_points'),
+            func.count(Submission.id).filter(Submission.is_correct == True).label('challenges_solved'),
+            func.max(Submission.created_at).label('last_submission')
+        ).filter(
+            Submission.is_correct == True,
+            Submission.created_at >= season.start_at,
+            Submission.created_at <= season.end_at
+        ).group_by(Submission.user_id).order_by(func.sum(Submission.points_awarded).desc()).all()
+
+        participants = []
+        for (user_id, total_points, challenges_solved, last_submission) in user_scores:
+            user = db.query(User).filter(User.id == user_id).first()
+            participants.append({
+                "user_id": str(user_id),
+                "username": user.username if user else "unknown",
+                "total_points": int(total_points or 0),
+                "challenges_solved": int(challenges_solved or 0),
+                "last_submission": last_submission.isoformat() if last_submission else None
+            })
+
         snapshot_data = {
             "season_id": season_id,
             "generated_at": datetime.utcnow().isoformat(),
-            "participants": [],
+            "participants": participants,
             "teams": [],
-            "total_participants": 0,
-            "challenges_completed": 0
+            "total_participants": len(participants),
+            "challenges_completed": sum(p.get('challenges_solved', 0) for p in participants)
         }
         
         snapshot = LeaderboardSnapshot(

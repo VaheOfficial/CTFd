@@ -7,7 +7,7 @@ import uuid
 
 from ..database import get_db
 from ..models.user import User
-from ..models.season import Season, Week
+from ..models.season import Season, Week, WeekChallenge
 from ..models.challenge import Challenge
 from ..utils.auth import get_current_user, require_admin
 from ..utils.logging import get_logger
@@ -51,6 +51,30 @@ class CreateWeekRequest(BaseModel):
     closes_at: datetime
     is_mini_mission: bool = False
 
+@router.get("/seasons/{season_id}", response_model=SeasonResponse)
+async def get_season(
+    season_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get a season by ID"""
+    
+    season = db.query(Season).filter(Season.id == season_id).first()
+    if not season:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    
+    return SeasonResponse(
+        id=str(season.id),
+        name=season.name,
+        start_at=season.start_at,
+        end_at=season.end_at,
+        total_weeks=season.total_weeks,
+        description=season.description,
+        theme=season.theme,
+        is_active=season.start_at.replace(tzinfo=None) <= datetime.utcnow() <= season.end_at.replace(tzinfo=None),
+        current_week=None
+    )
+
 @router.get("/seasons", response_model=List[SeasonResponse])
 async def get_seasons(
     current_user: User = Depends(get_current_user),
@@ -64,7 +88,7 @@ async def get_seasons(
     season_responses = []
     for season in seasons:
         # Check if season is currently active
-        is_active = season.start_at <= now <= season.end_at
+        is_active = season.start_at.replace(tzinfo=None) <= now <= season.end_at.replace(tzinfo=None)
         
         # Find current week if active
         current_week = None
@@ -181,9 +205,22 @@ async def get_season_weeks(
         # Check if week is currently open
         is_open = week.opens_at <= now <= week.closes_at
         
-        # Get challenges for this week (placeholder)
+        # Get challenges for this week via WeekChallenge mapping
+        mappings = db.query(WeekChallenge).filter(WeekChallenge.week_id == week.id).order_by(WeekChallenge.display_order).all()
         challenges = []
-        # TODO: Implement challenge-to-week mapping
+        for m in mappings:
+            ch = db.query(Challenge).filter(Challenge.id == m.challenge_id).first()
+            if not ch:
+                continue
+            challenges.append({
+                "id": str(ch.id),
+                "slug": ch.slug,
+                "title": ch.title,
+                "track": ch.track,
+                "difficulty": ch.difficulty,
+                "points_base": ch.points_base,
+                "status": ch.status
+            })
         
         week_responses.append(WeekResponse(
             id=str(week.id),

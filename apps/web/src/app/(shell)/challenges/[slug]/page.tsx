@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useChallenge, useChallengeInstance, useSubmitFlag, useConsumeHint } from '@/lib/api/hooks'
+import { useChallenge, useChallengeInstance, useSubmitFlag, useConsumeHint, useStartLabInstance, useStopLabInstance } from '@/lib/api/hooks'
 import { formatTime, formatPoints, getDifficultyVariant, getTrackColor } from '@/lib/utils'
 import { ErrorBoundary } from '@/components/shared/error-boundary'
 import { 
@@ -48,6 +48,9 @@ export default function ChallengePage() {
   const [submissionHistory, setSubmissionHistory] = useState<any[]>([])
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [instanceId, setInstanceId] = useState<string | null>(null)
+  const startLabMutation = useStartLabInstance()
+  const stopLabMutation = useStopLabInstance()
 
   const handleSubmitFlag = async () => {
     if (!flagInput.trim() || !challenge) return
@@ -121,10 +124,32 @@ export default function ChallengePage() {
     if (!challenge) return
     
     try {
-      await createInstanceMutation.mutateAsync()
+      const resp: any = await createInstanceMutation.mutateAsync()
+      const id = resp?.data?.id
+      if (id) setInstanceId(id)
     } catch (error) {
       // Error is handled by the mutation's onError
     }
+  }
+
+  const handleStartLab = async () => {
+    if (!challenge) return
+    try {
+      let id = instanceId
+      if (!id) {
+        const resp: any = await createInstanceMutation.mutateAsync()
+        id = resp?.data?.id
+        if (id) setInstanceId(id)
+      }
+      if (id) await startLabMutation.mutateAsync({ instanceId: id })
+    } catch {}
+  }
+
+  const handleStopLab = async () => {
+    if (!instanceId) return
+    try {
+      await stopLabMutation.mutateAsync({ instanceId })
+    } catch {}
   }
 
   const formatFileSize = (bytes: number) => {
@@ -245,7 +270,7 @@ export default function ChallengePage() {
                         {artifact.kind} • {formatFileSize(artifact.size_bytes)}
                       </p>
                     </div>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/artifacts/${artifact.id}/download`}>
                       <Download className="h-4 w-4 mr-2" />
                       Download
                     </Button>
@@ -308,7 +333,7 @@ export default function ChallengePage() {
                         {consumedHints.includes(hint.order) && (
                           <div className="mt-3 p-2 rounded bg-slate-700/50">
                             <p className="text-sm">
-                              [Hint content would be shown here after consumption]
+                              {challenge.hints.find((h: any) => h.order === hint.order)?.text || '[Hint content]'}
                             </p>
                           </div>
                         )}
@@ -394,7 +419,7 @@ export default function ChallengePage() {
           </Card>
 
           {/* Challenge Instance */}
-          {challenge.mode === 'dynamic' && (
+          {challenge.mode === 'solo' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -431,13 +456,13 @@ export default function ChallengePage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1">
+                  <Button variant="outline" className="flex-1" onClick={handleStartLab} disabled={startLabMutation.isPending}>
                     <Play className="h-4 w-4 mr-2" />
-                    Start Lab
+                    {startLabMutation.isPending ? 'Starting...' : 'Start Lab'}
                   </Button>
-                  <Button variant="outline" className="flex-1">
+                  <Button variant="outline" className="flex-1" onClick={handleStopLab} disabled={stopLabMutation.isPending}>
                     <Square className="h-4 w-4 mr-2" />
-                    Stop Lab
+                    {stopLabMutation.isPending ? 'Stopping...' : 'Stop Lab'}
                   </Button>
                 </div>
                 <div className="text-sm text-muted-foreground">

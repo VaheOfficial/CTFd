@@ -203,9 +203,17 @@ class ApiClient {
   }
 
   // Challenges
-  async getChallenge(challengeId: string) {
+  async getChallenges() {
+    return this.request('/api/challenges')
+  }
+
+  async getChallengeById(challengeId: string) {
     type ChallengeResponse = paths['/api/challenges/{challenge_id}']['get']['responses']['200']['content']['application/json']
     return this.request<ChallengeResponse>(`/api/challenges/${challengeId}`)
+  }
+
+  async getChallengeBySlug(slug: string) {
+    return this.request(`/api/challenges/slug/${slug}`)
   }
 
   async createChallengeInstance(challengeId: string) {
@@ -337,6 +345,10 @@ class ApiClient {
       method: 'POST',
       body: season,
     })
+  }
+
+  async getSeason(seasonId: string) {
+    return this.request(`/api/seasons/${seasonId}`)
   }
 
 }

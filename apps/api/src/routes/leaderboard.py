@@ -111,8 +111,9 @@ async def get_season_leaderboard(
             func.count(Submission.id).filter(Submission.is_correct == True).label('challenges_solved'),
             func.max(Submission.created_at).label('last_submission')
         ).filter(
-            Submission.is_correct == True
-            # TODO: Filter by season date range
+            Submission.is_correct == True,
+            Submission.created_at >= season.start_at,
+            Submission.created_at <= season.end_at
         ).group_by(Submission.user_id).subquery()
         
         # Join with user info and order by points, then by earliest submission for tie-breaking
@@ -153,22 +154,25 @@ async def get_season_leaderboard(
         
         # If current user not in top results, find their rank
         if current_user_rank is None:
+            # Compute rank considering season bounds
+            current_user_points = db.query(func.sum(Submission.points_awarded)).filter(
+                Submission.user_id == current_user.id,
+                Submission.is_correct == True,
+                Submission.created_at >= season.start_at,
+                Submission.created_at <= season.end_at
+            ).scalar() or 0
             user_rank_query = db.query(func.count().label('rank')).select_from(
                 db.query(
                     User.id,
-                    func.sum(Submission.points_awarded).label('total_points'),
-                    func.max(Submission.created_at).label('last_submission')
+                    func.sum(Submission.points_awarded).label('total_points')
                 ).join(
                     Submission, User.id == Submission.user_id
                 ).filter(
-                    Submission.is_correct == True
+                    Submission.is_correct == True,
+                    Submission.created_at >= season.start_at,
+                    Submission.created_at <= season.end_at
                 ).group_by(User.id).having(
-                    func.sum(Submission.points_awarded) > db.query(
-                        func.sum(Submission.points_awarded)
-                    ).filter(
-                        Submission.user_id == current_user.id,
-                        Submission.is_correct == True
-                    ).scalar()
+                    func.sum(Submission.points_awarded) > current_user_points
                 ).subquery()
             )
             
@@ -178,8 +182,9 @@ async def get_season_leaderboard(
         
         # Get total participants
         total_participants = db.query(func.count(func.distinct(Submission.user_id))).filter(
-            Submission.is_correct == True
-            # TODO: Filter by season date range
+            Submission.is_correct == True,
+            Submission.created_at >= season.start_at,
+            Submission.created_at <= season.end_at
         ).scalar() or 0
         
         return LeaderboardResponse(

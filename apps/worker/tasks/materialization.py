@@ -178,8 +178,37 @@ def _update_challenge_artifacts(challenge_id: str, artifacts: list, trace_log: l
                challenge_id=challenge_id,
                artifacts_count=len(artifacts))
     
-    # TODO: Update Challenge.artifacts and GenerationPlan.materialization_trace
-    # This requires database access from worker context
+    # Persist artifacts and materialization trace in API DB
+    try:
+        import os, sys
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        from apps.api.src.database import SessionLocal
+        from apps.api.src.models.challenge import Artifact
+        from apps.api.src.models.generation import GenerationPlan
+        db = SessionLocal()
+        try:
+            # Insert artifacts
+            for a in artifacts:
+                art = Artifact(
+                    challenge_id=challenge_id,
+                    s3_key=a['s3_key'],
+                    sha256=a['sha256'],
+                    size_bytes=a['size_bytes'],
+                    kind=a['kind'],
+                    original_filename=a['original_filename']
+                )
+                db.add(art)
+            # Update generation plan trace
+            gp = db.query(GenerationPlan).filter(GenerationPlan.challenge_id == challenge_id).first()
+            if gp:
+                gp.materialization_trace = trace_log
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error("Failed to persist materialization",
+                    challenge_id=challenge_id,
+                    error=str(e))
 
 def _update_generation_status(challenge_id: str, status: str, error_message: str = None):
     """Update generation plan status"""
@@ -189,5 +218,19 @@ def _update_generation_status(challenge_id: str, status: str, error_message: str
                status=status,
                error=error_message)
     
-    # TODO: Update GenerationPlan.status and error_message
-    # This requires database access from worker context
+    try:
+        import os, sys
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        from apps.api.src.database import SessionLocal
+        from apps.api.src.models.generation import GenerationPlan, GenerationStatus
+        db = SessionLocal()
+        try:
+            gp = db.query(GenerationPlan).filter(GenerationPlan.challenge_id == challenge_id).first()
+            if gp:
+                gp.status = getattr(GenerationStatus, status, GenerationStatus.FAILED)
+                gp.error_message = error_message
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error("Failed to update generation status", error=str(e))
