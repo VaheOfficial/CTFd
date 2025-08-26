@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useMe, useSetupTotp, useEnableTotp, useDisableTotp } from '@/lib/api/hooks'
+import { TwoFactorSettings } from '@/components/auth/TwoFactorSettings'
 import { Settings, Shield, Key, User } from 'lucide-react'
 import { useState } from 'react'
 
@@ -103,15 +104,18 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Two-Factor Authentication */}
+        {/* Email Two-Factor Authentication */}
+        <TwoFactorSettings />
+
+        {/* TOTP Two-Factor Authentication (Legacy) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-brand" />
-              Two-Factor Authentication
+              Authenticator App (TOTP)
             </CardTitle>
             <CardDescription>
-              Add an extra layer of security to your account
+              Time-based one-time passwords using an authenticator app (legacy)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -119,7 +123,7 @@ export default function SettingsPage() {
               <div>
                 <p className="font-medium">TOTP Status</p>
                 <p className="text-sm text-muted-foreground">
-                  Time-based one-time passwords using an authenticator app
+                  Google Authenticator, Authy, or similar apps
                 </p>
               </div>
               <Badge variant={(user as any)?.totp_enabled ? "default" : "outline"}>
@@ -131,7 +135,7 @@ export default function SettingsPage() {
               <div className="space-y-4">
                 {!totpSecret ? (
                   <Button onClick={handleSetupTotp} disabled={setupTotpMutation.isPending}>
-                    Setup Two-Factor Authentication
+                    Setup Authenticator App
                   </Button>
                 ) : (
                   <div className="space-y-4">

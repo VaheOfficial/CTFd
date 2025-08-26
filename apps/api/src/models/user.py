@@ -35,6 +35,10 @@ class User(Base):
     awards = relationship("Award", back_populates="user", cascade="all, delete-orphan")
     writeups = relationship("WriteUp", back_populates="author", foreign_keys="WriteUp.author_user_id", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="actor")
+    
+    # 2FA Relationships
+    two_factor_codes = relationship("TwoFactorCode", back_populates="user", cascade="all, delete-orphan")
+    two_factor_settings = relationship("TwoFactorSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 class Team(Base):
     __tablename__ = "teams"

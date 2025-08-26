@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { useLogin } from '@/lib/api/hooks'
+import { useAuth } from '@/lib/auth/hooks'
+import { TwoFactorForm } from '@/components/auth/TwoFactorForm'
 import { Shield, Loader2 } from 'lucide-react'
 import { z } from 'zod'
+import { toast } from 'sonner'
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -21,7 +23,7 @@ type LoginForm = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
   const router = useRouter()
-  const loginMutation = useLogin()
+  const { login, isLoading, requiresTwoFactor, twoFactorEmail, clearTwoFactor } = useAuth()
   const [formData, setFormData] = useState<LoginForm>({
     username: '',
     password: '',
@@ -29,6 +31,7 @@ export default function LoginPage() {
   })
   const [errors, setErrors] = useState<Partial<LoginForm>>({})
   const [needsTotp, setNeedsTotp] = useState(false)
+  const [userEmail, setUserEmail] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,20 +52,33 @@ export default function LoginPage() {
       }
     }
 
-    try {
-      const result = await loginMutation.mutateAsync({
-        username: formData.username,
-        password: formData.password,
-        totp_code: formData.totpCode || undefined,
-      })
+    const result = await login({
+      username: formData.username,
+      password: formData.password,
+      two_factor_code: formData.totpCode || undefined,
+    })
 
-      if ((result as any)?.data) {
-        router.push('/')
-      } else if ((result as any)?.error?.status === 422 && (result as any)?.error?.details?.detail?.[0]?.msg?.includes('TOTP')) {
-        setNeedsTotp(true)
+    console.log('Login result:', result)
+    console.log('Current Redux state after login:', { requiresTwoFactor, twoFactorEmail, isLoading })
+
+    // If login is successful, redirect
+    if (result.type === 'auth/login/fulfilled') {
+      toast.success('Login successful!')
+      router.push('/')
+    } else if (result.type === 'auth/login/rejected') {
+      // Check if it's a 2FA requirement
+      const payload = result.payload as any
+      console.log('Login rejected payload:', payload)
+      if (payload?.requiresTwoFactor) {
+        // 2FA is required - the Redux state will be updated automatically
+        // The UI will show the 2FA form due to requiresTwoFactor state
+        toast.info('Verification code sent to your email')
+        console.log('2FA should be required now')
+      } else {
+        // Handle other types of errors
+        const errorMessage = payload?.message || 'Login failed'
+        toast.error(errorMessage)
       }
-    } catch (error) {
-      // Error is already handled by the mutation
     }
   }
 
@@ -72,6 +88,46 @@ export default function LoginPage() {
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: undefined }))
     }
+  }
+
+  const handle2FAVerified = async (code: string) => {
+    try {
+      const result = await login({
+        username: formData.username,
+        password: formData.password,
+        two_factor_code: code,
+      })
+
+      if (result.type === 'auth/login/fulfilled') {
+        toast.success('Login successful!')
+        clearTwoFactor()
+        router.push('/')
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Verification failed')
+    }
+  }
+
+  const handle2FACancel = () => {
+    clearTwoFactor()
+    setFormData({ username: '', password: '', totpCode: '' })
+  }
+
+  console.log('Render check - 2FA state:', { requiresTwoFactor, twoFactorEmail })
+  
+  // Show 2FA form if required
+  if (requiresTwoFactor && twoFactorEmail) {
+    console.log('Rendering 2FA form for:', twoFactorEmail)
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <TwoFactorForm
+          email={twoFactorEmail}
+          onVerified={handle2FAVerified}
+          onCancel={handle2FACancel}
+          purpose="login"
+        />
+      </div>
+    )
   }
 
   return (
@@ -97,7 +153,7 @@ export default function LoginPage() {
                 value={formData.username}
                 onChange={handleInputChange('username')}
                 className={errors.username ? 'border-red-500' : ''}
-                disabled={loginMutation.isPending}
+                disabled={isLoading}
               />
               {errors.username && (
                 <p className="text-sm text-red-500">{errors.username}</p>
@@ -113,7 +169,7 @@ export default function LoginPage() {
                 value={formData.password}
                 onChange={handleInputChange('password')}
                 className={errors.password ? 'border-red-500' : ''}
-                disabled={loginMutation.isPending}
+                disabled={isLoading}
               />
               {errors.password && (
                 <p className="text-sm text-red-500">{errors.password}</p>
@@ -130,7 +186,7 @@ export default function LoginPage() {
                   value={formData.totpCode}
                   onChange={handleInputChange('totpCode')}
                   className={errors.totpCode ? 'border-red-500' : ''}
-                  disabled={loginMutation.isPending}
+                  disabled={isLoading}
                   maxLength={6}
                 />
                 {errors.totpCode && (
@@ -142,9 +198,9 @@ export default function LoginPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={loginMutation.isPending}
+              disabled={isLoading}
             >
-              {loginMutation.isPending ? (
+              {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Signing in...
@@ -153,12 +209,6 @@ export default function LoginPage() {
                 'Sign In'
               )}
             </Button>
-
-            {loginMutation.error && (
-              <div className="text-sm text-red-500 text-center">
-                {loginMutation.error.message || 'Login failed. Please try again.'}
-              </div>
-            )}
           </form>
 
           <div className="mt-6 text-center text-sm">

@@ -5,7 +5,7 @@ from fastapi.security import HTTPBearer
 import os
 
 from src.database import engine, Base
-from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, admin_ai
+from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, admin_ai, two_factor
 from src.utils.logging import setup_logging
 
 # Setup logging
@@ -45,6 +45,7 @@ if domain := os.getenv("DOMAIN"):
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(two_factor.router, prefix="/api", tags=["Two-Factor Authentication"])
 app.include_router(challenges.router, prefix="/api", tags=["Challenges"])
 app.include_router(seasons.router, prefix="/api", tags=["Seasons"])
 app.include_router(submissions.router, prefix="/api", tags=["Submissions"])

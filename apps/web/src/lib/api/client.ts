@@ -6,6 +6,7 @@ export type ApiResponse<T> = {
     message: string
     status: number
     details?: any
+    headers?: Record<string, string>
   }
 }
 
@@ -94,11 +95,15 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        // Special handling for 202 (2FA required) - include headers
+        const headers = response.status === 202 ? Object.fromEntries(response.headers.entries()) : undefined
+        
         return {
           error: {
             message: data?.message || `HTTP ${response.status}`,
             status: response.status,
             details: data,
+            headers,
           },
         }
       }
@@ -128,6 +133,7 @@ class ApiClient {
     username: string
     password: string
     totp_code?: string
+    two_factor_code?: string
   }) {
     type LoginResponse = paths['/api/auth/login']['post']['responses']['200']['content']['application/json']
     
@@ -349,6 +355,32 @@ class ApiClient {
 
   async getSeason(seasonId: string) {
     return this.request(`/api/seasons/${seasonId}`)
+  }
+
+  // Two-Factor Authentication
+  async send2FACode(email: string, purpose: string = 'login') {
+    return this.request('/api/auth/2fa/send-code', {
+      method: 'POST',
+      body: { email, purpose }
+    })
+  }
+
+  async verify2FACode(email: string, code: string, purpose: string = 'login') {
+    return this.request('/api/auth/2fa/verify-code', {
+      method: 'POST', 
+      body: { email, code, purpose }
+    })
+  }
+
+  async get2FAStatus() {
+    return this.request('/api/auth/2fa/status')
+  }
+
+  async toggle2FA(enable: boolean) {
+    return this.request('/api/auth/2fa/enable', {
+      method: 'POST',
+      body: { enable }
+    })
   }
 
 }

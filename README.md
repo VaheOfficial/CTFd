@@ -138,7 +138,18 @@ make seed
 - **API Documentation**: http://localhost:8000/api/docs
 - **MinIO Console**: http://localhost:9001 (admin/password from .env)
 
-**Default Login**: admin / admin123
+**Create Credentials**
+- **Create an Admin account**: docker exec -it [container] /bin/sh
+```bash
+psql -U cte -d cte -c "UPDATE users SET role='ADMIN' WHERE username='[user]'; SELECT username, 
+role FROM users WHERE username='[user]';"
+```
+**Quick ShutDown and StartUp for testing (Especially after new dependency)**
+```bash
+docker compose down
+docker compose build web api worker
+docker compose up
+```
 
 ## Challenge Development
 

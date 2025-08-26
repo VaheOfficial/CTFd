@@ -163,6 +163,11 @@ export function NavShell({ children }: { children: React.ReactNode }) {
                       <Badge variant="outline" className="text-xs px-2 py-0.5">
                         Rank #{(user as any)?.rank || 'N/A'}
                       </Badge>
+                      {((user as any)?.email_2fa_enabled || (user as any)?.totp_enabled) && (
+                        <Badge variant="outline" className="text-xs px-2 py-0.5 text-blue-400 border-blue-500/30">
+                          2FA
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <ChevronDown className={cn(

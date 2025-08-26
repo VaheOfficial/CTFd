@@ -3,7 +3,16 @@ import { apiClient } from './client'
 import { toast } from 'sonner'
 
 // Re-export auth hooks from the new auth module
-export { useMe, useLogin, useSignup, useLogout, useAuth } from '@/lib/auth/hooks'
+export { 
+  useMe, 
+  useLogin, 
+  useSignup, 
+  useLogout, 
+  useAuth,
+  useSend2FACode,
+  useVerify2FACode,
+  useToggle2FA
+} from '@/lib/auth/hooks'
 
 // Query Keys
 export const queryKeys = {

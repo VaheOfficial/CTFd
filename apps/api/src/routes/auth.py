@@ -7,6 +7,8 @@ import secrets
 
 from ..database import get_db
 from ..models.user import User, UserRole
+from ..models.two_factor import TwoFactorSettings, TwoFactorCode
+from ..services.email_service import email_service
 from ..utils.auth import (
     verify_password, 
     get_password_hash, 
@@ -29,6 +31,7 @@ class LoginRequest(BaseModel):
     username: str
     password: str
     totp_code: Optional[str] = None
+    two_factor_code: Optional[str] = None
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -96,7 +99,83 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid credentials"
         )
     
-    # Check TOTP if enabled
+    # Check if 2FA is enabled
+    two_factor_settings = db.query(TwoFactorSettings).filter(
+        TwoFactorSettings.user_id == user.id
+    ).first()
+    
+    # Check email-based 2FA
+    if two_factor_settings and two_factor_settings.email_2fa_enabled:
+        if not request.two_factor_code:
+            # Check rate limiting
+            if not two_factor_settings.can_send_code():
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Please wait before requesting another code"
+                )
+            
+            # Invalidate any existing codes for this user
+            existing_codes = db.query(TwoFactorCode).filter(
+                TwoFactorCode.user_id == user.id,
+                TwoFactorCode.purpose == "login",
+                TwoFactorCode.is_used == False
+            ).all()
+            
+            for code in existing_codes:
+                code.is_used = True
+            
+            # Generate and send new 2FA code
+            from datetime import datetime, timezone
+            code_record, code = TwoFactorCode.generate_code(
+                user_id=str(user.id),
+                purpose="login",
+                expiry_minutes=5
+            )
+            
+            db.add(code_record)
+            two_factor_settings.last_code_sent_at = datetime.now(timezone.utc)
+            db.commit()
+            
+            # Send email
+            if not email_service.send_2fa_code(
+                to_email=user.email,
+                code=code,
+                username=user.username,
+                purpose="login"
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to send verification code"
+                )
+            
+            # User needs to provide 2FA code
+            raise HTTPException(
+                status_code=status.HTTP_202_ACCEPTED,
+                detail="Two-factor authentication required. Check your email for a verification code.",
+                headers={"X-User-Email": user.email}
+            )
+        
+        # Verify 2FA code
+        code_record = db.query(TwoFactorCode).filter(
+            TwoFactorCode.user_id == user.id,
+            TwoFactorCode.code == request.two_factor_code,
+            TwoFactorCode.purpose == "login",
+            TwoFactorCode.is_used == False
+        ).first()
+        
+        if not code_record or not code_record.is_valid():
+            two_factor_settings.increment_failed_attempts()
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired two-factor code"
+            )
+        
+        # Mark code as used and reset failed attempts
+        code_record.mark_used()
+        two_factor_settings.reset_failed_attempts()
+    
+    # Check TOTP if enabled (legacy support)
     if user.totp_secret:
         if not request.totp_code:
             raise HTTPException(
@@ -111,8 +190,8 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             )
     
     # Update last login
-    from datetime import datetime
-    user.last_login = datetime.utcnow()
+    from datetime import datetime, timezone
+    user.last_login = datetime.now(timezone.utc)
     db.commit()
     
     # Create tokens
@@ -131,14 +210,24 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     )
 
 @router.get("/me")
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Get current user information"""
+    
+    # Get 2FA settings
+    two_factor_settings = db.query(TwoFactorSettings).filter(
+        TwoFactorSettings.user_id == current_user.id
+    ).first()
+    
     return {
         "id": str(current_user.id),
         "username": current_user.username,
         "email": current_user.email,
         "role": current_user.role.value,  # Convert enum to string value
         "totp_enabled": bool(current_user.totp_secret),
+        "email_2fa_enabled": two_factor_settings.email_2fa_enabled if two_factor_settings else False,
         "created_at": current_user.created_at,
         "last_login": current_user.last_login
     }
