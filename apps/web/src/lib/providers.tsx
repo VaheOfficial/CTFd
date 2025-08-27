@@ -8,6 +8,10 @@ import { useState } from 'react'
 import { Provider } from 'react-redux'
 import { PersistGate } from 'redux-persist/integration/react'
 import { store, persistor } from './redux/store'
+import { useEffect } from 'react'
+import { useAppDispatch } from './redux/hooks'
+import { loadAllStats, loadAdminStats } from './redux/slices/statsSlice'
+import { useAppSelector } from './redux/hooks'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -32,6 +36,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
       })
   )
 
+  // Bootstrap loader: when authenticated, load all stats once
+  const Bootstrapper = () => {
+    const dispatch = useAppDispatch()
+    const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated)
+    const role = useAppSelector((s) => s.auth.user?.role)
+    useEffect(() => {
+      if (isAuthenticated) {
+        dispatch(loadAllStats())
+        if (role === 'ADMIN') {
+          dispatch(loadAdminStats())
+        }
+      }
+    }, [dispatch, isAuthenticated, role])
+    return null
+  }
+
   return (
     <Provider store={store}>
       <PersistGate loading={<div>Loading...</div>} persistor={persistor}>
@@ -43,6 +63,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             disableTransitionOnChange
           >
             {children}
+            <Bootstrapper />
             <Toaster
               position="top-center"
               toastOptions={{

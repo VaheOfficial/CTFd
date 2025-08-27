@@ -1,6 +1,7 @@
 import { configureStore, combineReducers } from '@reduxjs/toolkit'
 import { persistStore, persistReducer } from 'redux-persist'
 import authSlice from './slices/authSlice'
+import statsSlice from './slices/statsSlice'
 
 // Use a safe storage that works with SSR
 const createNoopStorage = () => {
@@ -29,6 +30,7 @@ const persistConfig = {
 
 const rootReducer = combineReducers({
   auth: authSlice,
+  stats: statsSlice,
 })
 
 const persistedReducer = persistReducer(persistConfig, rootReducer)

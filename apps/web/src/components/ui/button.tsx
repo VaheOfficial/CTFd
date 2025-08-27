@@ -5,27 +5,30 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-2xl text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-300/40 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-base font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 min-h-[44px]",
   {
     variants: {
       variant: {
-        default: "bg-brand text-white hover:bg-brand-hover",
+        default: "bg-gradient-to-r from-primary via-primary/95 to-primary/90 text-primary-foreground hover:from-primary/90 hover:via-primary/85 hover:to-primary/80 shadow-lg hover:shadow-xl",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "bg-gradient-to-r from-destructive via-destructive/95 to-destructive/90 text-destructive-foreground hover:from-destructive/90 hover:via-destructive/85 hover:to-destructive/80 shadow-lg hover:shadow-xl",
         outline:
-          "border border-slate-700 bg-transparent hover:bg-slate-800/50 hover:text-accent-foreground",
+          "border-2 border-border bg-background/50 backdrop-blur-sm hover:bg-card/80 hover:border-primary/50 text-foreground shadow-md hover:shadow-lg",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-slate-800/50 hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-        // Additional variant used in challenges page
-        matrix: "bg-gradient-to-r from-brand to-brand/80 text-white hover:from-brand/90 hover:to-brand/70",
+          "bg-gradient-to-r from-secondary via-secondary/95 to-secondary/90 text-secondary-foreground hover:from-secondary/90 hover:via-secondary/85 hover:to-secondary/80 shadow-lg hover:shadow-xl",
+        ghost: "hover:bg-card/50 hover:text-foreground backdrop-blur-sm",
+        link: "text-primary underline-offset-4 hover:underline hover:text-primary/80",
+        // Modern cybersecurity variants
+        cyber: "bg-gradient-to-r from-accent via-accent/95 to-accent/90 text-accent-foreground hover:from-accent/90 hover:via-accent/85 hover:to-accent/80 shadow-lg hover:shadow-xl",
+        success: "bg-gradient-to-r from-emerald-600 via-emerald-600/95 to-emerald-600/90 text-white hover:from-emerald-500 hover:via-emerald-500/95 hover:to-emerald-500/90 shadow-lg hover:shadow-xl",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-xl px-3",
-        lg: "h-11 rounded-2xl px-8",
-        icon: "h-10 w-10",
+        default: "h-12 px-6 py-3",
+        sm: "h-10 rounded-lg px-4 py-2 text-sm min-h-[40px]",
+        lg: "h-14 rounded-xl px-8 py-4 text-lg min-h-[48px]",
+        icon: "h-12 w-12 min-h-[44px]",
+        "icon-sm": "h-10 w-10 min-h-[40px]",
+        "icon-lg": "h-14 w-14 min-h-[48px]",
       },
     },
     defaultVariants: {

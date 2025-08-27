@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import { apiClient } from '@/lib/api/client'
+import { loadAllStats, clearStats } from './statsSlice'
 
 export interface User {
   id: string
@@ -19,7 +20,7 @@ interface AuthState {
   isAuthenticated: boolean
   error: string | null
   requiresTwoFactor: boolean
-  twoFactorEmail: string | null
+  twoFactorUsername: string | null
 }
 
 const initialState: AuthState = {
@@ -29,7 +30,7 @@ const initialState: AuthState = {
   isAuthenticated: false,
   error: null,
   requiresTwoFactor: false,
-  twoFactorEmail: null,
+  twoFactorUsername: null,
 }
 
 // Async thunks
@@ -57,29 +58,19 @@ export const login = createAsyncThunk(
   }, { rejectWithValue }) => {
     try {
       const response = await apiClient.login({ username, password, totp_code: undefined, two_factor_code })
-      console.log('API response:', response)
       if (response.error) {
-        console.log('API error response:', response.error)
         // Check if 2FA is required
         if (response.error.status === 202) {
-          // Try to get email from headers or use username as fallback
-          const email = response.error.headers?.['x-user-email'] || 
-                       response.error.headers?.['X-User-Email'] || 
-                       `${username}@placeholder.com`
-          console.log('Extracted email for 2FA:', email)
-          const rejectPayload = { 
+          return rejectWithValue({ 
             requiresTwoFactor: true, 
             message: response.error.message,
-            email: email
-          }
-          console.log('Rejecting with 2FA payload:', rejectPayload)
-          return rejectWithValue(rejectPayload)
+            username: username
+          })
         }
         throw new Error(response.error.message)
       }
       return response.data
     } catch (error: any) {
-      console.log('Login thunk error:', error)
       return rejectWithValue(error.message)
     }
   }
@@ -109,6 +100,12 @@ const authSlice = createSlice({
       state.isAuthenticated = true
       // Store in localStorage for API calls
       localStorage.setItem('auth_token', action.payload)
+      // Update API client with new token 
+      if (typeof window !== 'undefined') {
+        import('@/lib/api/client').then(({ apiClient }) => {
+          apiClient.setToken(action.payload)
+        })
+      }
     },
     logout: (state) => {
       state.user = null
@@ -116,19 +113,19 @@ const authSlice = createSlice({
       state.isAuthenticated = false
       state.error = null
       state.requiresTwoFactor = false
-      state.twoFactorEmail = null
+      state.twoFactorUsername = null
       // Clear from localStorage
       localStorage.removeItem('auth_token')
     },
-    setTwoFactorRequired: (state, action: PayloadAction<{ email: string }>) => {
+    setTwoFactorRequired: (state, action: PayloadAction<{ username: string }>) => {
       state.requiresTwoFactor = true
-      state.twoFactorEmail = action.payload.email
+      state.twoFactorUsername = action.payload.username
       state.isLoading = false
       state.error = null
     },
     clearTwoFactor: (state) => {
       state.requiresTwoFactor = false
-      state.twoFactorEmail = null
+      state.twoFactorUsername = null
     },
     clearError: (state) => {
       state.error = null
@@ -178,11 +175,9 @@ const authSlice = createSlice({
         const payload = action.payload as any
         
         // Check if 2FA is required
-        console.log('Redux login.rejected - payload:', payload)
         if (payload?.requiresTwoFactor) {
-          console.log('Setting 2FA required state')
           state.requiresTwoFactor = true
-          state.twoFactorEmail = payload?.email || null
+          state.twoFactorUsername = payload?.username || null
           state.error = null
           // Ensure user is not marked as authenticated during 2FA
           state.isAuthenticated = false
@@ -196,7 +191,6 @@ const authSlice = createSlice({
               apiClient.setToken(null)
             })
           }
-          console.log('2FA state set:', { requiresTwoFactor: state.requiresTwoFactor, email: state.twoFactorEmail })
         } else {
           state.error = payload?.message || action.payload as string
         }

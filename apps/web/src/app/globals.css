@@ -7,49 +7,51 @@
 
 @layer base {
   :root {
-    /* Dark mode default with emerald brand color */
-    --brand: #10b981; /* emerald-500 */
+    /* Modern soft theme inspired by Discord/Linear/Notion */
+    --brand: #5865f2; /* Discord blurple - softer than harsh blues */
     
-    /* Backgrounds = slate-950 / slate-900 */
-    --background: 222 84% 5%;        /* slate-950 */
-    --foreground: 210 40% 98%;       /* slate-50 */
+    /* Warm dark theme - easier on eyes */
+    --background: 220 13% 9%;        /* Warm dark gray like Discord */
+    --foreground: 220 9% 85%;        /* Soft white, not harsh */
 
-    /* Surface = slate-800/700 */
-    --card: 215 25% 27%;             /* slate-700 */
-    --card-foreground: 210 40% 90%;  /* slate-200 */
+    /* Card surfaces - slightly lighter with warmth */
+    --card: 220 13% 12%;             /* Subtle card elevation */
+    --card-foreground: 220 9% 85%;   /* Soft text */
  
-    --popover: 215 25% 27%;          /* slate-700 */
-    --popover-foreground: 210 40% 90%; /* slate-200 */
+    --popover: 220 13% 12%;          /* Matching card */
+    --popover-foreground: 220 9% 85%; /* Soft text */
  
-    /* Primary = emerald brand */
-    --primary: 160 84% 39%;          /* emerald-500 */
-    --primary-foreground: 0 0% 100%; /* White text on emerald */
+    /* Primary = Soft indigo like Linear */
+    --primary: 239 84% 67%;          /* Soft indigo #6366f1 */
+    --primary-foreground: 0 0% 100%; /* White on primary */
  
-    --secondary: 215 28% 17%;        /* slate-800 */
-    --secondary-foreground: 210 40% 80%; /* slate-300 */
+    /* Secondary = Soft purple like Notion */
+    --secondary: 270 95% 75%;        /* Soft purple #a855f7 */
+    --secondary-foreground: 0 0% 100%; /* White on secondary */
  
-    --muted: 215 28% 17%;            /* slate-800 */
-    --muted-foreground: 215 20% 65%; /* slate-400 */
+    --muted: 220 13% 18%;            /* Muted surfaces */
+    --muted-foreground: 220 9% 55%;  /* Muted text - not too gray */
  
-    /* Accents: subtle lime for focus rings */
-    --accent: 84 81% 44%;            /* lime-500 */
-    --accent-foreground: 0 0% 100%;  /* White text on lime */
+    /* Accent = Soft teal like modern apps */
+    --accent: 174 62% 47%;           /* Soft teal #14b8a6 */
+    --accent-foreground: 0 0% 100%;  /* White on accent */
  
-    --destructive: 0 85% 60%;        /* red-500 */
-    --destructive-foreground: 0 0% 100%; /* White on red */
+    /* Status colors - all softened */
+    --destructive: 0 72% 51%;        /* Soft red #dc2626 */
+    --destructive-foreground: 0 0% 100%;
 
-    --success: 160 84% 39%;          /* emerald-500 */
-    --success-foreground: 0 0% 100%; /* White on success */
+    --success: 142 69% 58%;          /* Soft green #22c55e */
+    --success-foreground: 0 0% 100%;
 
-    --warning: 35 90% 55%;           /* orange-500 */
-    --warning-foreground: 0 0% 100%; /* White on warning */
+    --warning: 38 92% 50%;           /* Soft amber #f59e0b */
+    --warning-foreground: 0 0% 100%;
 
-    /* Borders = slate-700 */
-    --border: 215 25% 27%;           /* slate-700 */
-    --input: 215 28% 17%;            /* slate-800 with slate-900/60 background */
-    --ring: 160 84% 39%;             /* emerald-500 for focus */
+    /* Borders - very subtle */
+    --border: 220 13% 18%;           /* Subtle warm borders */
+    --input: 220 13% 15%;            /* Input backgrounds */
+    --ring: 239 84% 67%;             /* Soft focus ring */
  
-    --radius: 1rem;                  /* 2xl rounded corners */
+    --radius: 1rem;                  /* Full rounded edges */
   }
  
   .light {
@@ -69,33 +71,93 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px; /* Base font size - WCAG minimum */
+    line-height: 1.6; /* Optimal line height for readability */
   }
   
-  /* Code-friendly selection as specified */
+  /* Electric cyan selection */
   ::selection {
-    background-color: rgba(16, 185, 129, 0.3); /* emerald-500 at 30% opacity */
+    background-color: rgba(0, 217, 255, 0.3);
     color: inherit;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-weight: 600;
+  /* Typography scale based on design system standards */
+  h1 {
+    font-size: 2.25rem; /* 36px */
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
   }
 
-  /* Scrollbar styling */
+  h2 {
+    font-size: 1.875rem; /* 30px */
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.025em;
+  }
+
+  h3 {
+    font-size: 1.5rem; /* 24px */
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  h4 {
+    font-size: 1.25rem; /* 20px */
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  h5 {
+    font-size: 1.125rem; /* 18px */
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  h6 {
+    font-size: 1rem; /* 16px */
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  /* Body text sizes */
+  .text-lg {
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.6;
+  }
+
+  .text-base {
+    font-size: 1rem; /* 16px */
+    line-height: 1.6;
+  }
+
+  .text-sm {
+    font-size: 0.875rem; /* 14px - minimum for small text */
+    line-height: 1.5;
+  }
+
+  .text-xs {
+    font-size: 0.875rem; /* 14px - never go below this */
+    line-height: 1.4;
+  }
+
+  /* Professional scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-card;
+    @apply bg-muted;
+    border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-primary/50 rounded;
+    @apply bg-primary/60;
+    border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-primary/70;
+    @apply bg-primary/80;
   }
 }
 
@@ -103,5 +165,66 @@
   /* Clean, professional styling */
   .code-font {
     font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Consolas', monospace;
+  }
+
+  /* Subtle professional effects */
+  .card-elevated {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+    transition: all 0.3s cubic-bezier(.25,.8,.25,1);
+  }
+
+  .card-elevated:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25), 0 2px 4px rgba(0, 0, 0, 0.22);
+  }
+
+  .border-accent {
+    border: 1px solid hsl(var(--primary) / 0.2);
+  }
+
+  .border-accent:hover {
+    border-color: hsl(var(--primary) / 0.4);
+  }
+
+  /* Status indicators */
+  .status-indicator {
+    position: relative;
+  }
+
+  .status-indicator::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    background: hsl(var(--accent));
+    border-radius: 50%;
+    border: 2px solid hsl(var(--background));
+  }
+
+  /* Smooth gradient fixes for banding */
+  .bg-gradient-to-br,
+  .bg-gradient-to-r,
+  .bg-gradient-to-b {
+    background-attachment: fixed;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+
+  /* Add noise texture to reduce banding */
+  .gradient-smooth {
+    position: relative;
+  }
+
+  .gradient-smooth::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: 
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.15) 1px, transparent 0);
+    background-size: 16px 16px;
+    opacity: 0.03;
+    pointer-events: none;
   }
 }

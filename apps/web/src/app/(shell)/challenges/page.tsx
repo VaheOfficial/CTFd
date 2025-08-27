@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Target } from 'lucide-react'
 import { apiGet, getDifficultyColor, getTrackColor, formatTime, formatPoints, getDifficultyVariant } from '@/lib/utils'
 
 interface Challenge {
@@ -46,71 +47,8 @@ export default function ChallengesPage() {
 
   const fetchChallenges = async () => {
     try {
-      // For now, we'll create mock data since the API endpoint returns individual challenges
-      // In a real implementation, you'd have a /api/challenges endpoint that returns all challenges
-      const mockChallenges: Challenge[] = [
-        {
-          id: '1',
-          slug: 'network-forensics-101',
-          title: 'Network Forensics 101',
-          track: 'forensics',
-          difficulty: 'beginner',
-          points_base: 100,
-          time_cap_minutes: 30,
-          mode: 'standard',
-          description: 'Analyze network traffic to identify suspicious activity and extract indicators of compromise.',
-          artifacts: [
-            { id: '1', filename: 'traffic.pcap', kind: 'pcap', size_bytes: 2048576 },
-            { id: '2', filename: 'baseline.txt', kind: 'text', size_bytes: 1024 }
-          ],
-          hints: [
-            { order: 1, cost_percent: 10, available: true },
-            { order: 2, cost_percent: 25, available: true }
-          ],
-          has_lab: false
-        },
-        {
-          id: '2',
-          slug: 'malware-analysis-basics',
-          title: 'Malware Analysis Basics',
-          track: 'reverse',
-          difficulty: 'easy',
-          points_base: 150,
-          time_cap_minutes: 45,
-          mode: 'standard',
-          description: 'Analyze a malware sample to understand its behavior and extract configuration data.',
-          artifacts: [
-            { id: '3', filename: 'sample.exe', kind: 'binary', size_bytes: 512000 },
-            { id: '4', filename: 'strings.txt', kind: 'text', size_bytes: 4096 }
-          ],
-          hints: [
-            { order: 1, cost_percent: 15, available: true }
-          ],
-          has_lab: true
-        },
-        {
-          id: '3',
-          slug: 'log-analysis-incident',
-          title: 'Log Analysis: Security Incident',
-          track: 'forensics',
-          difficulty: 'medium',
-          points_base: 250,
-          time_cap_minutes: 60,
-          mode: 'standard',
-          description: 'Investigate system logs to reconstruct a security incident timeline and identify the attack vector.',
-          artifacts: [
-            { id: '5', filename: 'auth.log', kind: 'log', size_bytes: 1048576 },
-            { id: '6', filename: 'access.log', kind: 'log', size_bytes: 2097152 },
-            { id: '7', filename: 'syslog', kind: 'log', size_bytes: 4194304 }
-          ],
-          hints: [
-            { order: 1, cost_percent: 20, available: true },
-            { order: 2, cost_percent: 35, available: true }
-          ],
-          has_lab: false
-        }
-      ]
-      setChallenges(mockChallenges)
+      const response = await apiGet('/api/challenges')
+      setChallenges(response.data || [])
     } catch (err: any) {
       setError('Failed to load challenges')
     } finally {
@@ -154,20 +92,36 @@ export default function ChallengesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h1 className="text-4xl font-display font-bold text-primary mb-4">CHALLENGES</h1>
-        <p className="text-muted-foreground font-mono">
-          Defensive cyber operations training scenarios
+    <div className="space-y-10 p-6">
+      <div className="text-center space-y-4">
+        <h1 className="text-5xl font-bold text-primary mb-6 flex items-center justify-center gap-4">
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/20 shadow-lg">
+            <Target className="h-12 w-12 text-primary" />
+          </div>
+          CHALLENGES
+        </h1>
+        <p className="text-xl text-muted-foreground">
+          Defensive Cyberspace Operations Training Scenarios
         </p>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="text-sm font-mono text-primary uppercase tracking-wider mb-2 block">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-secondary/20 via-secondary/15 to-secondary/10 border border-secondary/20">
+              <Target className="h-6 w-6 text-secondary" />
+            </div>
+            <span className="text-xl">Challenge Filters</span>
+          </CardTitle>
+          <CardDescription className="text-base">
+            Filter challenges by search term, track, and difficulty level
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="space-y-3">
+            <label className="text-base font-semibold text-foreground">
               Search
             </label>
             <Input
@@ -178,12 +132,12 @@ export default function ChallengesPage() {
             />
           </div>
           
-          <div>
-            <label className="text-sm font-mono text-primary uppercase tracking-wider mb-2 block">
+          <div className="space-y-3">
+            <label className="text-base font-semibold text-foreground">
               Track
             </label>
             <select 
-              className="w-full h-10 rounded-md border border-input bg-input px-3 py-2 text-sm font-mono text-primary"
+              className="w-full h-12 rounded-xl border-2 border-border bg-card/50 backdrop-blur-sm px-4 py-3 text-base font-medium text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary hover:border-primary/50"
               value={selectedTrack}
               onChange={(e) => setSelectedTrack(e.target.value)}
             >
@@ -195,12 +149,12 @@ export default function ChallengesPage() {
             </select>
           </div>
           
-          <div>
-            <label className="text-sm font-mono text-primary uppercase tracking-wider mb-2 block">
+          <div className="space-y-3">
+            <label className="text-base font-semibold text-foreground">
               Difficulty
             </label>
             <select 
-              className="w-full h-10 rounded-md border border-input bg-input px-3 py-2 text-sm font-mono text-primary"
+              className="w-full h-12 rounded-xl border-2 border-border bg-card/50 backdrop-blur-sm px-4 py-3 text-base font-medium text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary hover:border-primary/50"
               value={selectedDifficulty}
               onChange={(e) => setSelectedDifficulty(e.target.value)}
             >
@@ -215,6 +169,7 @@ export default function ChallengesPage() {
           <div className="flex items-end">
             <Button 
               variant="outline" 
+              size="lg"
               onClick={() => {
                 setSearchTerm('')
                 setSelectedTrack('all')
@@ -238,13 +193,13 @@ export default function ChallengesPage() {
       )}
 
       {/* Challenge Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {filteredChallenges.map((challenge) => (
-          <Card key={challenge.id} className="hover:border-primary/50 transition-colors">
-            <CardHeader>
+          <Card key={challenge.id} className="hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 cursor-pointer">
+            <CardHeader className="space-y-4">
               <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <CardTitle className="text-lg">{challenge.title}</CardTitle>
+                <div className="space-y-3 flex-1">
+                  <CardTitle className="text-xl font-bold">{challenge.title}</CardTitle>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="outline" style={{ backgroundColor: `${getTrackColor(challenge.track)}20`, borderColor: getTrackColor(challenge.track), color: getTrackColor(challenge.track) }}>
                       {challenge.track.toUpperCase()}
@@ -254,38 +209,38 @@ export default function ChallengesPage() {
                     </Badge>
                   </div>
                 </div>
-                <div className="text-right font-mono text-sm">
-                  <div className="text-primary font-bold">{formatPoints(challenge.points_base)} pts</div>
-                  <div className="text-muted-foreground">{formatTime(challenge.time_cap_minutes)}</div>
+                <div className="text-right space-y-1">
+                  <div className="text-primary font-bold text-lg">{formatPoints(challenge.points_base)} pts</div>
+                  <div className="text-muted-foreground text-base">{formatTime(challenge.time_cap_minutes)}</div>
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <CardDescription className="mb-4">
+            <CardContent className="space-y-6">
+              <CardDescription className="text-base leading-relaxed">
                 {challenge.description}
               </CardDescription>
               
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm font-mono">
-                  <span className="text-muted-foreground">Artifacts:</span>
-                  <span className="text-primary">{challenge.artifacts.length}</span>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-base">
+                  <span className="text-muted-foreground font-medium">Artifacts:</span>
+                  <span className="text-primary font-semibold">{challenge.artifacts.length}</span>
                 </div>
                 
-                <div className="flex items-center justify-between text-sm font-mono">
-                  <span className="text-muted-foreground">Hints:</span>
-                  <span className="text-primary">{challenge.hints.length}</span>
+                <div className="flex items-center justify-between text-base">
+                  <span className="text-muted-foreground font-medium">Hints:</span>
+                  <span className="text-primary font-semibold">{challenge.hints.length}</span>
                 </div>
                 
                 {challenge.has_lab && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="cyber" className="w-fit">
                     LAB AVAILABLE
                   </Badge>
                 )}
               </div>
               
-              <div className="mt-4">
+              <div className="pt-2">
                 <Link href={`/challenges/${challenge.slug}`}>
-                  <Button className="w-full">
+                  <Button size="lg" className="w-full">
                     START CHALLENGE
                   </Button>
                 </Link>

@@ -78,6 +78,9 @@ def get_current_user(
         )
     
     user_id: str = payload.get("sub")
+    print(f"JWT payload received: {payload}")
+    print(f"Extracted user_id: '{user_id}' (type: {type(user_id)})")
+    
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

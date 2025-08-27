@@ -17,10 +17,12 @@ import {
   Calendar,
   Target,
   Crown,
-  Activity
+  Activity,
+  Bell,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useMe } from '@/lib/api/hooks'
+import { AuthGuard } from '@/components/auth/AuthGuard'
 
 const adminNavigation = [
   {
@@ -98,105 +100,106 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-950">
-      {/* Admin Sidebar */}
-      <aside className="hidden lg:flex lg:w-72 lg:flex-col lg:fixed lg:inset-y-0 lg:pt-16">
-        <div className="flex flex-col flex-grow bg-slate-900 border-r border-slate-800 overflow-y-auto">
-          {/* Admin Header */}
-          <div className="p-6 border-b border-slate-800">
-            <div className="flex items-center space-x-3">
-              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center shadow-lg">
-                <Crown className="h-7 w-7 text-white" />
+    <AuthGuard requireAuth={true}>
+      <div className="min-h-screen bg-background">
+        {/* Admin Sidebar */}
+        <aside className="fixed inset-y-0 left-0 z-50 w-80 bg-card backdrop-blur-xl border-r border-border/50">
+          <div className="flex flex-col h-full">
+            {/* Admin Header - Modern Design */}
+            <div className="px-6 py-8">
+              <Link href="/admin" className="flex items-center space-x-4 group">
+                <div className="relative">
+                  <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary via-primary/95 to-primary/90 flex items-center justify-center shadow-lg shadow-primary/25 transition-all duration-200 group-hover:shadow-primary/40">
+                    <Crown className="h-9 w-9 text-primary-foreground" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-accent rounded-full border-2 border-card flex items-center justify-center">
+                    <div className="h-2.5 w-2.5 bg-white rounded-full"></div>
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors">
+                    Admin Panel
+                  </h1>
+                  <p className="text-base text-muted-foreground">Platform Management</p>
+                </div>
+              </Link>
+            </div>
+
+            {/* Navigation - Modern Design */}
+            <nav className="flex-1 px-4 space-y-1">
+              <div className="mb-8">
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-4 mb-4">
+                  Admin Menu
+                </p>
+                <div className="space-y-2">
+                  {adminNavigation.map((item) => {
+                    const isActive = pathname === item.href
+                    const IconComponent = item.icon
+                    
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className={cn(
+                          'flex flex-col gap-2 px-4 py-4 rounded-xl text-base font-medium transition-all duration-200 group relative min-h-[64px]',
+                          isActive
+                            ? 'bg-gradient-to-r from-primary via-primary/95 to-primary/90 text-primary-foreground shadow-lg'
+                            : 'text-muted-foreground hover:bg-card/80 hover:text-foreground'
+                        )}
+                      >
+                        <div className="flex items-center gap-4">
+                          <IconComponent className="h-6 w-6 flex-shrink-0" />
+                          <span className="font-semibold">{item.name}</span>
+                          {isActive && (
+                            <div className="absolute right-4 w-2 h-2 rounded-full bg-primary-foreground" />
+                          )}
+                        </div>
+                        <p className={cn(
+                          "text-sm ml-10 transition-colors",
+                          isActive ? "text-primary-foreground/80" : "text-muted-foreground/80"
+                        )}>
+                          {item.description}
+                        </p>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            </nav>
+          </div>
+        </aside>
+
+        {/* Main Content Area */}
+        <div className="lg:pl-80 flex flex-col flex-1">
+          {/* Mobile Admin Header */}
+          <div className="lg:hidden bg-card/90 backdrop-blur-xl border-b border-border/50 p-6">
+            <div className="flex items-center space-x-4">
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary via-primary/95 to-primary/90 flex items-center justify-center shadow-lg">
+                <Crown className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Admin Panel</h2>
-                <p className="text-sm text-slate-400">Platform Management</p>
+                <h2 className="text-lg font-bold text-foreground">Admin Panel</h2>
+                <p className="text-sm text-muted-foreground">Platform Management</p>
               </div>
             </div>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-2">
-            {adminNavigation.map((item) => {
-              const isActive = pathname === item.href
-              const IconComponent = item.icon
-              
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    'group flex flex-col p-4 rounded-xl transition-all duration-200 border',
-                    isActive
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-sm'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/50 border-transparent hover:border-slate-700'
-                  )}
-                >
-                  <div className="flex items-center space-x-3">
-                    <IconComponent className={cn(
-                      "h-5 w-5 transition-colors",
-                      isActive ? "text-emerald-400" : "text-slate-400 group-hover:text-white"
-                    )} />
-                    <span className="font-medium">{item.name}</span>
-                  </div>
-                  <p className={cn(
-                    "text-xs mt-1 ml-8 transition-colors",
-                    isActive ? "text-emerald-300/70" : "text-slate-500 group-hover:text-slate-400"
-                  )}>
-                    {item.description}
-                  </p>
-                </Link>
-              )
-            })}
-          </nav>
-
-          {/* Admin Stats */}
-          <div className="p-4 border-t border-slate-800">
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-slate-400">Quick Stats</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="text-center p-3 rounded-lg bg-slate-800/50">
-                  <div className="text-lg font-bold text-emerald-400">1,247</div>
-                  <div className="text-xs text-slate-400">Users</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-slate-800/50">
-                  <div className="text-lg font-bold text-blue-400">38</div>
-                  <div className="text-xs text-slate-400">Challenges</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-slate-800/50">
-                  <div className="text-lg font-bold text-purple-400">1</div>
-                  <div className="text-xs text-slate-400">Active Season</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-slate-800/50">
-                  <div className="text-lg font-bold text-yellow-400">2.8K</div>
-                  <div className="text-xs text-slate-400">Submissions</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="lg:pl-72 flex flex-col flex-1">
-        {/* Mobile Admin Header */}
-        <div className="lg:hidden bg-slate-900 border-b border-slate-800 p-4">
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
-              <Crown className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h2 className="font-bold text-white">Admin Panel</h2>
-              <p className="text-xs text-slate-400">Platform Management</p>
-            </div>
-          </div>
+          {/* Page Content */}
+          <main className="flex-1 lg:px-20">
+            {children}
+          </main>
         </div>
 
-        {/* Page Content */}
-        <main className="flex-1 p-6 lg:p-8">
-          {children}
-        </main>
+        {/* Floating Notifications Button - Desktop Only */}
+        <Button
+          variant="ghost"
+          size="icon-lg"
+          className="hidden lg:flex fixed top-6 right-6 z-50 h-14 w-14 rounded-2xl bg-card/90 backdrop-blur-xl border border-border/50 shadow-xl hover:shadow-2xl text-muted-foreground hover:text-foreground hover:bg-card transition-all duration-200 hover:scale-105"
+        >
+          <Bell className="h-6 w-6" />
+          <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-accent border-2 border-card" />
+        </Button>
       </div>
-    </div>
+    </AuthGuard>
   )
 }

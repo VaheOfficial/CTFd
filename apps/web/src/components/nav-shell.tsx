@@ -56,145 +56,167 @@ export function NavShell({ children }: { children: React.ReactNode }) {
   const currentNav = isAdminPage ? adminNavigation : navigation
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-background">
       {/* Left Sidebar Navigation */}
-      <aside className="fixed inset-y-0 left-0 z-50 w-72 bg-slate-900/95 backdrop-blur-xl border-r border-slate-800/50 shadow-xl shadow-black/20 hidden lg:block">
+      <aside className="fixed inset-y-0 left-0 z-50 w-80 bg-card backdrop-blur-xl border-r border-border/50 hidden lg:block">
         <div className="flex flex-col h-full">
-          {/* Logo Header */}
-          <div className="flex items-center px-6 py-5 border-b border-slate-800/50">
-            <Link href="/" className="flex items-center space-x-3 group">
+          {/* Logo Header - Discord/Linear inspired */}
+          <div className="px-6 py-8">
+            <Link href="/" className="flex items-center space-x-4 group">
               <div className="relative">
-                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/25 group-hover:shadow-emerald-500/40 transition-all duration-300">
-                  <Shield className="h-7 w-7 text-white" />
+                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary via-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/25 transition-all duration-200 group-hover:shadow-primary/40">
+                  <Shield className="h-9 w-9 text-primary-foreground" />
                 </div>
-                <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-lime-400 animate-pulse" />
+                <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-accent rounded-full border-2 border-card flex items-center justify-center">
+                  <div className="h-2.5 w-2.5 bg-white rounded-full"></div>
+                </div>
               </div>
               <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                <h1 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors">
                   CTF Platform
                 </h1>
-                <p className="text-sm text-slate-400">Cyber Training Excellence</p>
+                <p className="text-base text-muted-foreground">Defensive Cyber Ops</p>
               </div>
             </Link>
           </div>
 
-          {/* Navigation Menu */}
-          <nav className="flex-1 px-4 py-6 space-y-2">
-            {currentNav.map((item) => {
-              const isActive = pathname === item.href || 
-                (item.href !== '/' && pathname?.startsWith(item.href))
-              const IconComponent = item.icon
-              
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group',
-                    isActive
-                      ? 'bg-emerald-500/15 text-emerald-400 shadow-sm border border-emerald-500/20 shadow-emerald-500/10'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60 hover:border-slate-700/50 border border-transparent'
-                  )}
-                >
-                  <IconComponent className={cn(
-                    "h-5 w-5 transition-colors",
-                    isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300"
-                  )} />
-                  <span>{item.name}</span>
-                </Link>
-              )
-            }) as React.ReactNode}
+          {/* Navigation Menu - Modern design */}
+          <nav className="flex-1 px-4 space-y-1">
+            <div className="mb-8">
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-4 mb-4">
+                Main Menu
+              </p>
+              <div className="space-y-2">
+                {currentNav.map((item) => {
+                  const isActive = pathname === item.href || 
+                    (item.href !== '/' && pathname?.startsWith(item.href))
+                  const IconComponent = item.icon
+                  
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={cn(
+                        'flex items-center gap-4 px-4 py-3.5 rounded-xl text-base font-medium transition-all duration-200 group relative min-h-[48px]',
+                        isActive
+                          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                      )}
+                    >
+                      <IconComponent className={cn(
+                        "h-6 w-6 transition-colors duration-200",
+                        isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground"
+                      )} />
+                      <span>{item.name}</span>
+                      {isActive && (
+                        <div className="absolute right-4 w-2 h-2 bg-primary-foreground rounded-full"></div>
+                      )}
+                    </Link>
+                  )
+                }) as React.ReactNode}
+              </div>
+            </div>
           </nav>
 
-          {/* Admin/User Mode Toggle */}
+          {/* Admin/User Mode Toggle - Discord-style */}
           {isAdmin && (
-            <div className="px-4 py-4 border-t border-slate-800/50">
-              <div className="flex rounded-xl bg-slate-800/60 border border-slate-700/50 p-1">
+            <div className="px-4 py-6">
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-4">
+                  Mode
+                </p>
+              </div>
+              <div className="flex rounded-xl gap-1 p-1 bg-muted/30">
                 <Link href="/" className="flex-1">
                   <Button
                     variant="ghost"
                     className={cn(
-                      "w-full h-10 rounded-lg text-sm font-medium transition-all",
+                      "w-full h-12 rounded-lg text-base font-medium transition-all duration-200",
                       !isAdminPage 
-                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm" 
-                        : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                        ? "bg-primary text-primary-foreground shadow-md" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                     )}
                   >
-                    <User className="h-4 w-4 mr-2" />
-                    User Mode
+                    User
                   </Button>
                 </Link>
                 <Link href="/admin" className="flex-1">
                   <Button
                     variant="ghost"
                     className={cn(
-                      "w-full h-10 rounded-lg text-sm font-medium transition-all",
+                      "w-full h-12 rounded-lg text-base font-medium transition-all duration-200",
                       isAdminPage 
-                        ? "bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-sm" 
-                        : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                        ? "bg-secondary text-secondary-foreground shadow-md" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                     )}
                   >
-                    <Crown className="h-4 w-4 mr-2" />
-                    Admin Mode
+                    Admin
                   </Button>
                 </Link>
               </div>
             </div>
           )}
 
-          {/* User Profile */}
+          {/* User Profile - Modern card style */}
           {user && (
-            <div className="px-4 py-4 border-t border-slate-800/50">
+            <div className="px-4 py-6 border-t border-border/50">
               <div className="relative">
                 <Button
                   variant="ghost"
-                  className="w-full flex items-center space-x-3 p-3 hover:bg-slate-800/60 rounded-xl"
+                  className="w-full flex items-center space-x-4 p-4 hover:bg-muted/30 rounded-xl transition-all duration-200 group min-h-[64px]"
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                 >
-                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold">
-                    {(user as any)?.username?.charAt(0)?.toUpperCase()}
+                  <div className="relative">
+                    <div className="h-14 w-14 flex-shrink-0 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-primary/20 text-lg">
+                      {(user as any)?.username?.charAt(0)?.toUpperCase()}
+                    </div>
+                    {((user as any)?.email_2fa_enabled || (user as any)?.totp_enabled) && (
+                      <div className="absolute -top-1 -right-1 h-5 w-5 bg-accent rounded-full border-2 border-card flex items-center justify-center">
+                        <Shield className="h-2.5 w-2.5 text-white" />
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium text-white">{(user as any)?.username}</p>
+                    <p className="font-semibold text-foreground group-hover:text-primary transition-colors text-base">
+                      {(user as any)?.username}
+                    </p>
                     <div className="flex items-center space-x-2 mt-1">
-                      <Badge variant="outline" className="text-xs px-2 py-0.5 text-emerald-400 border-emerald-500/30">
+                      <span className="text-sm text-muted-foreground">
                         {formatPoints((user as any)?.total_points || 0)} pts
-                      </Badge>
-                      <Badge variant="outline" className="text-xs px-2 py-0.5">
+                      </span>
+                      <span className="text-sm text-muted-foreground">•</span>
+                      <span className="text-sm text-muted-foreground">
                         Rank #{(user as any)?.rank || 'N/A'}
-                      </Badge>
-                      {((user as any)?.email_2fa_enabled || (user as any)?.totp_enabled) && (
-                        <Badge variant="outline" className="text-xs px-2 py-0.5 text-blue-400 border-blue-500/30">
-                          2FA
-                        </Badge>
-                      )}
+                      </span>
                     </div>
                   </div>
                   <ChevronDown className={cn(
-                    "h-4 w-4 text-slate-500 transition-transform duration-200",
+                    "h-5 w-5 text-muted-foreground transition-all duration-200 group-hover:text-foreground",
                     userMenuOpen && "rotate-180"
                   )} />
                 </Button>
-
-                {/* User Dropdown */}
+                {/* User Dropdown - Modern style */}
                 {userMenuOpen && (
-                  <div className="absolute bottom-full left-0 right-0 mb-2 rounded-xl bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 shadow-xl shadow-black/50 z-50">
-                    <div className="p-2">
-                      <Link href="/settings" onClick={() => setUserMenuOpen(false)}>
-                        <Button variant="ghost" className="w-full justify-start">
-                          <Settings className="h-4 w-4 mr-3" />
-                          Settings
+                  <div className="absolute bottom-full left-0 right-0 mb-4 rounded-xl bg-card backdrop-blur-xl border border-border/50 shadow-xl shadow-black/10 z-50">
+                    <div className="p-3">
+                      <Link href="/settings" className='' onClick={() => setUserMenuOpen(false)}>
+                        <Button 
+                          variant="ghost" 
+                          className="w-full justify-start hover:bg-muted/50 rounded-lg transition-all duration-200 group h-12 text-base"
+                        >
+                          <Settings className="h-5 w-5 mr-3 text-muted-foreground group-hover:text-foreground" />
+                          <span className="group-hover:text-foreground">Settings</span>
                         </Button>
                       </Link>
                       <Button 
                         variant="ghost" 
-                        className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all duration-200 group h-12 text-base"
                         onClick={() => {
                           logoutMutation.mutate()
                           setUserMenuOpen(false)
                         }}
                       >
-                        <LogOut className="h-4 w-4 mr-3" />
+                        <LogOut className="h-5 w-5 mr-3" />
                         Sign Out
                       </Button>
                     </div>
@@ -206,61 +228,28 @@ export function NavShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Top Bar (for mobile and secondary actions) */}
-      <header className="lg:pl-72 sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50">
+      {/* Mobile Top Bar (minimal, only for mobile) */}
+      <header className="lg:hidden sticky top-0 z-40 bg-background/90 backdrop-blur-xl border-b border-border/50">
         <div className="flex h-16 items-center justify-between px-6">
           {/* Mobile Logo */}
-          <div className="lg:hidden">
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="relative">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                  <Shield className="h-6 w-6 text-white" />
-                </div>
-                <div className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-lime-400 animate-pulse" />
-              </div>
-              <h1 className="text-lg font-bold bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-                CTF Platform
-              </h1>
-            </Link>
-          </div>
-
-          {/* Center Search */}
-          <div className="hidden md:block flex-1 max-w-2xl mx-8">
+          <Link href="/" className="flex items-center space-x-3">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-              <Input
-                placeholder="Search challenges, users, or content..."
-                className="w-full h-12 bg-slate-900/60 border-slate-700/50 pl-12 pr-6 text-base focus:border-emerald-500/50 focus:ring-emerald-500/20 rounded-xl"
-              />
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg">
+                <Shield className="h-6 w-6 text-primary-foreground" />
+              </div>
             </div>
-          </div>
+            <h1 className="text-lg font-bold text-foreground">
+              CTF Platform
+            </h1>
+          </Link>
 
-          {/* Right Actions */}
-          <div className="flex items-center space-x-4">
-            {/* Search for mobile */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="md:hidden h-10 w-10 p-0 text-slate-400 hover:text-white hover:bg-slate-800/60"
-            >
-              <Search className="h-5 w-5" />
-            </Button>
-
-            {/* Notifications */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="relative h-10 w-10 p-0 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-xl"
-            >
-              <Bell className="h-5 w-5" />
-              <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-emerald-400 animate-pulse" />
-            </Button>
-
+          {/* Mobile Actions */}
+          <div className="flex items-center space-x-2">
             {/* Mobile menu button */}
             <Button
               variant="ghost"
-              size="sm"
-              className="lg:hidden h-10 w-10 p-0 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-xl"
+              size="icon-sm"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-200"
               onClick={() => setMobileMenuOpen(true)}
             >
               <Menu className="h-5 w-5" />
@@ -268,14 +257,14 @@ export function NavShell({ children }: { children: React.ReactNode }) {
 
             {/* Mobile Sign In/Up */}
             {!user && (
-              <div className="lg:hidden flex items-center space-x-2">
+              <div className="flex items-center space-x-2">
                 <Link href="/login">
                   <Button variant="ghost" size="sm">
                     Sign In
                   </Button>
                 </Link>
                 <Link href="/register">
-                  <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600">
+                  <Button size="sm">
                     Sign Up
                   </Button>
                 </Link>
@@ -285,6 +274,16 @@ export function NavShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
+      {/* Floating Notifications Button - Desktop Only */}
+      <Button
+        variant="ghost"
+        size="icon-lg"
+        className="hidden lg:flex fixed top-6 right-6 z-50 h-14 w-14 rounded-2xl bg-card/90 backdrop-blur-xl border border-border/50 shadow-xl hover:shadow-2xl text-muted-foreground hover:text-foreground hover:bg-card transition-all duration-200 hover:scale-105"
+      >
+        <Bell className="h-6 w-6" />
+        <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-accent border-2 border-card" />
+      </Button>
+
       {/* Mobile Drawer */}
       <MobileDrawer 
         isOpen={mobileMenuOpen} 
@@ -292,8 +291,8 @@ export function NavShell({ children }: { children: React.ReactNode }) {
       />
 
       {/* Main content */}
-      <main className="lg:pl-72 min-h-screen">
-        <div className="mx-auto max-w-7xl px-6 py-8">
+      <main className="lg:pl-80 min-h-screen">
+        <div className="mx-auto max-w-7xl px-6 py-8 lg:pr-20">
           {children}
         </div>
       </main>

@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api/client'
 
 export function useAuth() {
   const dispatch = useAppDispatch()
-  const { user, token, isLoading, isAuthenticated, error, requiresTwoFactor, twoFactorEmail } = useAppSelector((state) => state.auth)
+  const { user, token, isLoading, isAuthenticated, error, requiresTwoFactor, twoFactorUsername } = useAppSelector((state) => state.auth)
 
   // Initialize auth on mount if token exists in localStorage
   useEffect(() => {
@@ -25,12 +25,12 @@ export function useAuth() {
     isAuthenticated,
     error,
     requiresTwoFactor,
-    twoFactorEmail,
+    twoFactorUsername,
     login: (credentials: { username: string; password: string; two_factor_code?: string }) => dispatch(login(credentials)),
     signup: (credentials: { username: string; email: string; password: string }) => dispatch(signup(credentials)),
     logout: () => dispatch(logout()),
     fetchMe: () => dispatch(fetchMe()),
-    setTwoFactorRequired: (email: string) => dispatch(setTwoFactorRequired({ email })),
+    setTwoFactorRequired: (username: string) => dispatch(setTwoFactorRequired({ username })),
     clearTwoFactor: () => dispatch(clearTwoFactor()),
   }
 }
@@ -133,15 +133,15 @@ export function useVerify2FACode() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const mutateAsync = async ({ email, code, purpose = 'login' }: { 
-    email: string; 
+  const mutateAsync = async ({ username, code, purpose = 'login' }: { 
+    username: string; 
     code: string; 
     purpose?: string 
   }) => {
     setIsLoading(true)
     setError(null)
     try {
-      const response = await apiClient.verify2FACode(email, code, purpose)
+      const response = await apiClient.verify2FACode(username, code, purpose)
       if (response.error) {
         throw new Error(response.error.message)
       }

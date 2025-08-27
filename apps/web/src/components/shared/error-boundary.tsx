@@ -36,20 +36,22 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       }
 
       return (
-        <Card className="border-red-500/30 bg-red-500/5">
+        <Card className="border border-destructive/30 bg-gradient-to-br from-destructive/10 via-destructive/5 to-transparent shadow-xl">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-400">
-              <AlertTriangle className="h-5 w-5" />
-              Something went wrong
+            <CardTitle className="flex items-center gap-3 text-destructive">
+              <div className="p-2 rounded-lg bg-destructive/20 border border-destructive/30">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <span className="text-xl">Something went wrong</span>
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-base">
               An unexpected error occurred. Please try refreshing the page.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             {process.env.NODE_ENV === 'development' && this.state.error && (
-              <div className="p-3 rounded-lg bg-slate-800 border border-slate-700">
-                <code className="text-sm text-red-300">
+              <div className="p-4 rounded-xl bg-card/50 border border-border backdrop-blur-sm">
+                <code className="text-base text-destructive font-mono">
                   {this.state.error.message}
                 </code>
               </div>
@@ -57,9 +59,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <Button 
               onClick={() => window.location.reload()}
               variant="outline"
+              size="lg"
               className="w-full"
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-5 w-5 mr-3" />
               Refresh Page
             </Button>
           </CardContent>

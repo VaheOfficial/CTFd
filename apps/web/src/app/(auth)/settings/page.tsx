@@ -45,41 +45,45 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <Settings className="h-8 w-8 text-brand" />
+    <div className="space-y-10 p-6">
+      <div className="space-y-4">
+        <h1 className="text-4xl font-bold tracking-tight flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/20">
+            <Settings className="h-10 w-10 text-primary" />
+          </div>
           Settings
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-lg text-muted-foreground ml-16">
           Manage your account settings and security preferences
         </p>
       </div>
 
-      <div className="grid gap-6">
+      <div className="grid gap-8">
         {/* Profile Information */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5 text-brand" />
-              Profile Information
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-secondary/20 via-secondary/15 to-secondary/10 border border-secondary/20">
+                <User className="h-6 w-6 text-secondary" />
+              </div>
+              <span className="text-xl">Profile Information</span>
             </CardTitle>
             <CardDescription>
               Your basic account information
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <Label htmlFor="username" className="text-foreground font-semibold">Username</Label>
                 <Input 
                   id="username" 
                   value={(user as any)?.username || ''} 
                   disabled 
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+              <div className="space-y-3">
+                <Label htmlFor="email" className="text-foreground font-semibold">Email</Label>
                 <Input 
                   id="email" 
                   value={(user as any)?.email || ''} 
@@ -87,16 +91,16 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Total Points</Label>
-                <div className="text-2xl font-bold text-brand">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3 p-4 rounded-xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20">
+                <Label className="text-foreground font-semibold">Total Points</Label>
+                <div className="text-3xl font-bold text-primary">
                   {(user as any)?.total_points || 0}
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Rank</Label>
-                <div className="text-2xl font-bold">
+              <div className="space-y-3 p-4 rounded-xl bg-gradient-to-br from-secondary/10 via-secondary/5 to-transparent border border-secondary/20">
+                <Label className="text-foreground font-semibold">Rank</Label>
+                <div className="text-3xl font-bold text-secondary">
                   #{(user as any)?.rank || 'Unranked'}
                 </div>
               </div>
@@ -107,112 +111,35 @@ export default function SettingsPage() {
         {/* Email Two-Factor Authentication */}
         <TwoFactorSettings />
 
-        {/* TOTP Two-Factor Authentication (Legacy) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-brand" />
-              Authenticator App (TOTP)
-            </CardTitle>
-            <CardDescription>
-              Time-based one-time passwords using an authenticator app (legacy)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">TOTP Status</p>
-                <p className="text-sm text-muted-foreground">
-                  Google Authenticator, Authy, or similar apps
-                </p>
-              </div>
-              <Badge variant={(user as any)?.totp_enabled ? "default" : "outline"}>
-                {(user as any)?.totp_enabled ? "Enabled" : "Disabled"}
-              </Badge>
-            </div>
-
-            {!(user as any)?.totp_enabled ? (
-              <div className="space-y-4">
-                {!totpSecret ? (
-                  <Button onClick={handleSetupTotp} disabled={setupTotpMutation.isPending}>
-                    Setup Authenticator App
-                  </Button>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
-                      <p className="text-sm font-medium mb-2">Scan this QR code with your authenticator app:</p>
-                      {qrCodeUrl && (
-                        <img src={qrCodeUrl} alt="TOTP QR Code" className="mx-auto" />
-                      )}
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Or enter this secret manually: <code className="bg-slate-700 px-1 rounded">{totpSecret}</code>
-                      </p>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Enter 6-digit code from app"
-                        value={totpCode}
-                        onChange={(e) => setTotpCode(e.target.value)}
-                        maxLength={6}
-                      />
-                      <Button 
-                        onClick={handleEnableTotp}
-                        disabled={!totpCode || enableTotpMutation.isPending}
-                      >
-                        Enable
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter 6-digit code to disable"
-                    value={totpCode}
-                    onChange={(e) => setTotpCode(e.target.value)}
-                    maxLength={6}
-                  />
-                  <Button 
-                    variant="destructive"
-                    onClick={handleDisableTotp}
-                    disabled={!totpCode || disableTotpMutation.isPending}
-                  >
-                    Disable TOTP
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Change Password */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5 text-brand" />
-              Change Password
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-accent/20 via-accent/15 to-accent/10 border border-accent/20">
+                <Key className="h-6 w-6 text-accent" />
+              </div>
+              <span className="text-xl">Change Password</span>
             </CardTitle>
             <CardDescription>
               Update your account password
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Current Password</Label>
-              <Input id="current-password" type="password" />
+          <CardContent className="space-y-6">
+            <div className="grid gap-6">
+              <div className="space-y-3">
+                <Label htmlFor="current-password" className="text-foreground font-semibold">Current Password</Label>
+                <Input id="current-password" type="password" placeholder="Enter your current password" />
+              </div>
+              <div className="space-y-3">
+                <Label htmlFor="new-password" className="text-foreground font-semibold">New Password</Label>
+                <Input id="new-password" type="password" placeholder="Enter your new password" />
+              </div>
+              <div className="space-y-3">
+                <Label htmlFor="confirm-password" className="text-foreground font-semibold">Confirm New Password</Label>
+                <Input id="confirm-password" type="password" placeholder="Confirm your new password" />
+              </div>
+              <Button size="lg" className="w-fit">Update Password</Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">New Password</Label>
-              <Input id="new-password" type="password" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirm New Password</Label>
-              <Input id="confirm-password" type="password" />
-            </div>
-            <Button>Update Password</Button>
           </CardContent>
         </Card>
       </div>

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from ..database import get_db
 from ..models.user import User
-from ..models.challenge import Challenge, ChallengeInstance, Artifact, HintConsumption
+from ..models.challenge import Challenge, ChallengeInstance, Artifact, HintConsumption, Hint
 from ..models.season import WeekChallenge, Week
 from ..models.lab import LabTemplate, LabInstance, LabInstanceStatus
 from ..utils.auth import get_current_user
@@ -18,6 +18,9 @@ from ..utils.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+
 class ChallengeResponse(BaseModel):
     id: str
     slug: str
@@ -47,6 +50,98 @@ class LabStatusResponse(BaseModel):
     kasm_url: Optional[str]
     vpn_config: Optional[str]
 
+
+@router.get("/challenges", response_model=List[ChallengeResponse])
+async def get_challenges(
+    track: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all available challenges with optional filtering"""
+    
+    # Base query - only show published challenges
+    query = db.query(Challenge).filter(Challenge.status == "PUBLISHED")
+    
+    # Apply filters
+    if track:
+        query = query.filter(Challenge.track == track)
+    if difficulty:
+        query = query.filter(Challenge.difficulty == difficulty)
+    
+    # Only show challenges that are currently available (within open weeks)
+    from sqlalchemy import and_, or_
+    now = datetime.utcnow()
+    
+    # Get challenges that are either not scheduled to any week OR are in an open week
+    available_challenge_ids = db.query(WeekChallenge.challenge_id).join(
+        Week, WeekChallenge.week_id == Week.id
+    ).filter(
+        and_(Week.opens_at <= now, Week.closes_at >= now)
+    ).subquery()
+    
+    # Include challenges that are in open weeks OR not scheduled to any week
+    challenges = query.filter(
+        or_(
+            Challenge.id.in_(available_challenge_ids),
+            ~Challenge.id.in_(db.query(WeekChallenge.challenge_id))
+        )
+    ).limit(limit).all()
+    
+    # Build response
+    challenge_responses = []
+    for challenge in challenges:
+        # Get artifacts
+        artifacts = db.query(Artifact).filter(Artifact.challenge_id == challenge.id).all()
+        artifacts_data = [
+            {
+                "id": str(artifact.id),
+                "filename": artifact.original_filename,
+                "kind": artifact.kind,
+                "size_bytes": artifact.size_bytes
+            }
+            for artifact in artifacts
+        ]
+        
+        # Get hints (without revealing text unless consumed)
+        consumed_orders = set(
+            hc.hint_order for hc in db.query(HintConsumption).filter(
+                HintConsumption.user_id == current_user.id,
+                HintConsumption.challenge_id == challenge.id
+            ).all()
+        )
+        hints_data = []
+        for hint in challenge.hints:
+            item = {
+                "order": hint.order,
+                "cost_percent": hint.cost_percent,
+                "available": hint.order not in consumed_orders
+            }
+            if hint.order in consumed_orders:
+                item["text"] = hint.text
+            hints_data.append(item)
+        
+        # Check if lab available
+        has_lab = db.query(LabTemplate).filter(LabTemplate.challenge_id == challenge.id).first() is not None
+        
+        challenge_responses.append(ChallengeResponse(
+            id=str(challenge.id),
+            slug=challenge.slug,
+            title=challenge.title,
+            track=challenge.track,
+            difficulty=challenge.difficulty,
+            points_base=challenge.points_base,
+            time_cap_minutes=challenge.time_cap_minutes,
+            mode=challenge.mode,
+            description=challenge.description or "",
+            artifacts=artifacts_data,
+            hints=hints_data,
+            has_lab=has_lab
+        ))
+    
+    return challenge_responses
+    
 @router.get("/challenges/slug/{slug}", response_model=ChallengeResponse)
 async def get_challenge_by_slug(
     slug: str,

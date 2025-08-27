@@ -114,7 +114,18 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
                     detail="Please wait before requesting another code"
                 )
             
-            # Invalidate any existing codes for this user
+            # Clean up expired codes first
+            from datetime import datetime, timezone
+            expired_codes = db.query(TwoFactorCode).filter(
+                TwoFactorCode.user_id == user.id,
+                TwoFactorCode.purpose == "login",
+                TwoFactorCode.expires_at < datetime.now(timezone.utc)
+            ).all()
+            
+            for code in expired_codes:
+                db.delete(code)
+            
+            # Invalidate any remaining unused codes for this user
             existing_codes = db.query(TwoFactorCode).filter(
                 TwoFactorCode.user_id == user.id,
                 TwoFactorCode.purpose == "login",
@@ -151,8 +162,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             # User needs to provide 2FA code
             raise HTTPException(
                 status_code=status.HTTP_202_ACCEPTED,
-                detail="Two-factor authentication required. Check your email for a verification code.",
-                headers={"X-User-Email": user.email}
+                detail="Two-factor authentication required. Check your email for a verification code."
             )
         
         # Verify 2FA code

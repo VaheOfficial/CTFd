@@ -93,21 +93,23 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background py-12">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/20">
-            <Shield className="h-6 w-6 text-brand" />
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background/95 to-card/20 p-4">
+      <Card className="w-full max-w-lg shadow-2xl">
+        <CardHeader className="space-y-6 text-center pb-8">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/20 shadow-lg">
+            <Shield className="h-10 w-10 text-primary" />
           </div>
-          <CardTitle className="text-2xl font-bold">Create your account</CardTitle>
-          <CardDescription>
-            Join the CTE Platform and start your defensive cyber journey
-          </CardDescription>
+          <div className="space-y-3">
+            <CardTitle className="text-3xl font-bold text-foreground">Create your account</CardTitle>
+            <CardDescription className="text-lg">
+              Join the Defensive Cyberspace Operations Platform
+            </CardDescription>
+          </div>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+        <CardContent className="px-8 pb-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-3">
+              <Label htmlFor="username" className="text-foreground font-semibold">Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -122,8 +124,8 @@ export default function SignupPage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+            <div className="space-y-3">
+              <Label htmlFor="email" className="text-foreground font-semibold">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -138,8 +140,8 @@ export default function SignupPage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+            <div className="space-y-3">
+              <Label htmlFor="password" className="text-foreground font-semibold">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -156,17 +158,17 @@ export default function SignupPage() {
               )}
               
               {showPasswordRequirements && (
-                <div className="space-y-2 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-                  <p className="text-sm font-medium">Password requirements:</p>
-                  <div className="space-y-1">
+                <div className="space-y-3 p-4 rounded-xl bg-card/50 border border-border backdrop-blur-sm">
+                  <p className="text-base font-semibold text-foreground">Password requirements:</p>
+                  <div className="space-y-2">
                     {passwordRequirements.map((req, index) => (
-                      <div key={index} className="flex items-center space-x-2 text-sm">
+                      <div key={index} className="flex items-center space-x-3 text-base">
                         {req.check(formData.password) ? (
-                          <CheckCircle className="h-4 w-4 text-brand" />
+                          <CheckCircle className="h-5 w-5 text-primary" />
                         ) : (
-                          <div className="h-4 w-4 rounded-full border border-slate-500" />
+                          <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/50" />
                         )}
-                        <span className={req.check(formData.password) ? 'text-brand' : 'text-muted-foreground'}>
+                        <span className={req.check(formData.password) ? 'text-primary font-medium' : 'text-muted-foreground'}>
                           {req.label}
                         </span>
                       </div>
@@ -176,8 +178,8 @@ export default function SignupPage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <div className="space-y-3">
+              <Label htmlFor="confirmPassword" className="text-foreground font-semibold">Confirm Password</Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -194,7 +196,8 @@ export default function SignupPage() {
 
             <Button
               type="submit"
-              className="w-full"
+              className="w-full mt-8"
+              size="lg"
               disabled={signupMutation.isPending}
             >
               {signupMutation.isPending ? (
@@ -214,9 +217,9 @@ export default function SignupPage() {
             )}
           </form>
 
-          <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Already have an account? </span>
-            <Link href="/login" className="text-brand hover:underline">
+          <div className="mt-8 text-center">
+            <span className="text-muted-foreground text-base">Already have an account? </span>
+            <Link href="/login" className="text-primary hover:text-primary/80 font-semibold text-base hover:underline transition-colors">
               Sign in
             </Link>
           </div>

@@ -5,7 +5,7 @@ export default function PublicLayout({
 }) {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="w-full max-w-md p-6">
+      <div className="w-full max-w-lg p-6">
         {children}
       </div>
     </div>

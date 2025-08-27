@@ -16,12 +16,12 @@ router = APIRouter()
 
 # Pydantic models
 class Send2FACodeRequest(BaseModel):
-    email: EmailStr
+    username: str
     purpose: str = "login"  # "login", "setup", "reset"
 
 
 class Verify2FACodeRequest(BaseModel):
-    email: EmailStr
+    username: str
     code: str
     purpose: str = "login"
 
@@ -51,10 +51,10 @@ async def send_2fa_code(
 ):
     """Send 2FA code to user's email"""
     
-    # Find user by email
-    user = db.query(User).filter(User.email == request.email).first()
+    # Find user by username
+    user = db.query(User).filter(User.username == request.username).first()
     if not user:
-        # Don't reveal if email exists or not for security
+        # Don't reveal if username exists or not for security
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Please wait before requesting another code"
@@ -127,8 +127,8 @@ async def verify_2fa_code(
 ):
     """Verify 2FA code"""
     
-    # Find user by email
-    user = db.query(User).filter(User.email == request.email).first()
+    # Find user by username
+    user = db.query(User).filter(User.username == request.username).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -153,13 +153,24 @@ async def verify_2fa_code(
             detail="Too many failed attempts. Please try again later."
         )
     
-    # Find valid code
+    # Clean up expired codes first
+    from datetime import datetime, timezone
+    expired_codes = db.query(TwoFactorCode).filter(
+        TwoFactorCode.user_id == user.id,
+        TwoFactorCode.purpose == request.purpose,
+        TwoFactorCode.expires_at < datetime.now(timezone.utc)
+    ).all()
+    
+    for code in expired_codes:
+        db.delete(code)
+    
+    # Find valid code (get the most recent one)
     code_record = db.query(TwoFactorCode).filter(
         TwoFactorCode.user_id == user.id,
         TwoFactorCode.code == request.code,
         TwoFactorCode.purpose == request.purpose,
         TwoFactorCode.is_used == False
-    ).first()
+    ).order_by(TwoFactorCode.created_at.desc()).first()
     
     if not code_record or not code_record.is_valid():
         # Increment failed attempts
@@ -177,13 +188,38 @@ async def verify_2fa_code(
     # Reset failed attempts on success
     settings.reset_failed_attempts()
     
+    # Update last login
+    user.last_login = datetime.now(timezone.utc)
+    
     db.commit()
     
-    return {
-        "message": "Code verified successfully",
-        "user_id": str(user.id),
-        "valid": True
-    }
+    # For login purpose, complete the authentication and return JWT token
+    if request.purpose == "login":
+        from ..utils.auth import create_access_token
+        
+        access_token = create_access_token(data={"sub": str(user.id)})
+        print(f"Creating JWT token with user.id: {user.id} (type: {type(user.id)})")
+        print(f"JWT payload will be: {{'sub': '{str(user.id)}'}}")
+        return {
+            "message": "Login successful",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id),
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+            }
+        }
+    else:
+        # For other purposes (settings, etc.), just return verification success
+        return {
+            "message": "Code verified successfully",
+            "user_id": str(user.id),
+            "valid": True
+        }
 
 
 @router.get("/auth/2fa/status")

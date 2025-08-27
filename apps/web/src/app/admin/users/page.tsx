@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatPoints } from '@/lib/utils'
+import { useUsers, useUpdateUser } from '@/lib/api/hooks'
 import { 
   Users, 
   Search, 
@@ -74,22 +75,22 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   
-  const filteredUsers = mockUsers.filter(user => {
-    const matchesSearch = user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter
-    const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'active' && user.is_active) ||
-                         (statusFilter === 'inactive' && !user.is_active)
-    
-    return matchesSearch && matchesRole && matchesStatus
+  const { data: users = [], isLoading, error } = useUsers({
+    search: searchQuery || undefined,
+    role: roleFilter !== 'all' ? roleFilter : undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    limit: 100
   })
+  
+  const updateUserMutation = useUpdateUser()
+  
+  const filteredUsers = users
 
   const getRoleIcon = (role: string) => {
     switch (role) {
-      case 'admin':
+      case 'ADMIN':
         return <Crown className="h-4 w-4 text-yellow-400" />
-      case 'moderator':
+      case 'MODERATOR':
         return <Shield className="h-4 w-4 text-blue-400" />
       default:
         return <User className="h-4 w-4 text-slate-400" />
@@ -98,21 +99,21 @@ export default function AdminUsersPage() {
 
   const getRoleBadge = (role: string) => {
     switch (role) {
-      case 'admin':
-        return <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">ADMIN</Badge>
-      case 'moderator':
-        return <Badge variant="default" className="bg-blue-500 hover:bg-blue-600">MODERATOR</Badge>
+      case 'ADMIN':
+        return <Badge variant="default">ADMIN</Badge>
+      case 'MODERATOR':
+        return <Badge variant="default">MODERATOR</Badge>
       default:
         return <Badge variant="outline">USER</Badge>
     }
   }
 
-  const totalUsers = mockUsers.length
-  const activeUsers = mockUsers.filter(u => u.is_active).length
-  const adminUsers = mockUsers.filter(u => u.role === 'admin').length
+  const totalUsers = users.length
+  const activeUsers = users.filter((u: any) => u.is_active).length
+  const adminUsers = users.filter((u: any) => u.role === 'ADMIN').length
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -248,8 +249,25 @@ export default function AdminUsersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {filteredUsers.map((user) => (
+          {isLoading ? (
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="animate-pulse flex items-center space-x-4 p-4 rounded-lg border">
+                  <div className="w-12 h-12 bg-slate-700 rounded-full"></div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-slate-700 rounded w-1/3"></div>
+                    <div className="h-3 bg-slate-700 rounded w-1/2"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div className="text-center py-8 text-red-400">
+              Error loading users: {error.message}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredUsers.map((user: any) => (
               <div key={user.id} className="flex items-center justify-between p-4 rounded-lg border border-slate-700 hover:border-brand/50 transition-colors">
                 <div className="flex items-center space-x-4">
                   <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold">
@@ -316,10 +334,11 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+                          ))}
+            </div>
+          )}
 
-          {filteredUsers.length === 0 && (
+          {!isLoading && !error && filteredUsers.length === 0 && (
             <div className="text-center py-8">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">No users found</h3>

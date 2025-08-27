@@ -10,17 +10,17 @@ import { toast } from 'sonner'
 import { apiClient } from '@/lib/api/client'
 
 interface TwoFactorFormProps {
-  email: string
+  username: string
   onVerified: (code: string) => void
   onCancel: () => void
   purpose?: string
 }
 
-export function TwoFactorForm({ email, onVerified, onCancel, purpose = 'login' }: TwoFactorFormProps) {
+export function TwoFactorForm({ username, onVerified, onCancel, purpose = 'login' }: TwoFactorFormProps) {
   const [code, setCode] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(300) // 5 minutes
+  const [timeLeft, setTimeLeft] = useState(60) // 60 seconds to match backend rate limit
   const [canResend, setCanResend] = useState(false)
 
   // Countdown timer
@@ -39,19 +39,19 @@ export function TwoFactorForm({ email, onVerified, onCancel, purpose = 'login' }
       sendCode()
     } else {
       // For login, the code was already sent by the backend
-      setTimeLeft(300) // Start the timer
+      setTimeLeft(60) // Start the timer (60 seconds to match backend rate limit)
     }
   }, [])
 
   const sendCode = async () => {
     setIsSending(true)
     try {
-      const response = await apiClient.send2FACode(email, purpose)
+      const response = await apiClient.send2FACode(username, purpose) // username is actually username now
       if (response.error) {
         toast.error(response.error.message)
       } else {
         toast.success('Verification code sent to your email')
-        setTimeLeft(300) // Reset timer
+        setTimeLeft(60) // Reset timer (60 seconds to match backend rate limit)
         setCanResend(false)
       }
     } catch (error) {
@@ -70,12 +70,18 @@ export function TwoFactorForm({ email, onVerified, onCancel, purpose = 'login' }
 
     setIsLoading(true)
     try {
-      const response = await apiClient.verify2FACode(email, code, purpose)
-      if (response.error) {
-        toast.error(response.error.message)
-      } else {
-        toast.success('Code verified successfully')
+      // For login purpose, let the parent handle the verification to avoid double calls
+      if (purpose === 'login') {
         onVerified(code)
+      } else {
+        // For other purposes (settings, etc.), handle verification here
+        const response = await apiClient.verify2FACode(username, code, purpose)
+        if (response.error) {
+          toast.error(response.error.message)
+        } else {
+          toast.success('Code verified successfully')
+          onVerified(code)
+        }
       }
     } catch (error) {
       toast.error('Invalid or expired code')
@@ -103,11 +109,14 @@ export function TwoFactorForm({ email, onVerified, onCancel, purpose = 'login' }
       </CardHeader>
       
       <CardContent className="space-y-6">
-        {/* Email Display */}
+        {/* Username Display */}
         <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/30 border border-slate-700/50">
-          <Mail className="h-5 w-5 text-emerald-400" />
-          <span className="font-mono text-sm text-slate-300">{email}</span>
-        </div>
+           <Mail className="h-5 w-5 text-emerald-400" />
+           <div className="text-sm text-slate-300">
+             <span className="text-slate-400">Username: </span>
+             <span className="font-mono text-emerald-400">{username}</span>
+           </div>
+         </div>
 
         {/* Code Form */}
         <form onSubmit={handleSubmit} className="space-y-4">

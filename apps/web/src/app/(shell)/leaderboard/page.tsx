@@ -60,31 +60,35 @@ export default function LeaderboardPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <Trophy className="h-8 w-8 text-brand" />
-          Leaderboard
+    <div className="space-y-10 p-6">
+      <div className="text-center space-y-4">
+        <h1 className="text-5xl font-bold text-primary mb-6 flex items-center justify-center gap-4">
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/20 shadow-lg">
+            <Trophy className="h-12 w-12 text-primary" />
+          </div>
+          LEADERBOARD
         </h1>
-        <p className="text-muted-foreground">
-          Top performers in defensive cybersecurity challenges
+        <p className="text-xl text-muted-foreground">
+          Top Performers in Defensive Cybersecurity Challenges
         </p>
       </div>
 
       {/* Season Selection */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Season Selection
+          <CardTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-secondary/20 via-secondary/15 to-secondary/10 border border-secondary/20">
+              <Calendar className="h-6 w-6 text-secondary" />
+            </div>
+            <span className="text-xl">Season Selection</span>
           </CardTitle>
-          <CardDescription>
-            Choose a season to view its leaderboard
+          <CardDescription className="text-base">
+            Choose a season to view its leaderboard rankings
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Select value={selectedSeasonId} onValueChange={setSelectedSeasonId}>
-            <SelectTrigger className="w-full max-w-xs">
+            <SelectTrigger className="w-full max-w-md">
               <SelectValue placeholder="Select a season" />
             </SelectTrigger>
             <SelectContent>
@@ -104,24 +108,24 @@ export default function LeaderboardPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>{activeSeason.name}</CardTitle>
-                  <CardDescription>
+                <div className="space-y-2">
+                  <CardTitle className="text-2xl">{activeSeason.name}</CardTitle>
+                  <CardDescription className="text-base">
                     {activeSeason.is_active ? 'Current Season' : 'Completed Season'}
                   </CardDescription>
                 </div>
-                <div className="flex gap-4 text-sm text-muted-foreground">
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-brand">
+                <div className="flex gap-6 text-base">
+                  <div className="text-center p-4 rounded-xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20">
+                    <div className="text-2xl font-bold text-primary">
                       {leaderboard?.total_participants || 0}
                     </div>
-                    <div>Participants</div>
+                    <div className="text-muted-foreground font-medium">Participants</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-lg font-bold">
+                  <div className="text-center p-4 rounded-xl bg-gradient-to-br from-secondary/10 via-secondary/5 to-transparent border border-secondary/20">
+                    <div className="text-2xl font-bold text-secondary">
                       Week {activeSeason.current_week || 1}
                     </div>
-                    <div>Current Week</div>
+                    <div className="text-muted-foreground font-medium">Current Week</div>
                   </div>
                 </div>
               </div>
@@ -140,53 +144,57 @@ export default function LeaderboardPage() {
               {leaderboard?.entries && leaderboard.entries.length >= 3 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Crown className="h-5 w-5 text-yellow-400" />
-                      Top 3 Champions
+                    <CardTitle className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-gradient-to-br from-yellow-500/20 via-yellow-500/15 to-yellow-500/10 border border-yellow-500/30">
+                        <Crown className="h-6 w-6 text-yellow-400" />
+                      </div>
+                      <span className="text-xl">Top 3 Champions</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-6">
                       {/* 2nd Place */}
                       <div className="order-1 text-center">
-                        <div className="bg-slate-400/20 rounded-2xl p-4 border border-slate-400/40">
-                          <Medal className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-                          <h3 className="font-bold text-lg">{leaderboard.entries[1]?.username}</h3>
-                          <p className="text-lg font-mono text-slate-400">
+                        <div className="bg-gradient-to-br from-slate-500/20 via-slate-500/15 to-slate-500/10 rounded-2xl p-6 border border-slate-500/30 shadow-lg">
+                          <Medal className="h-10 w-10 text-slate-400 mx-auto mb-3" />
+                          <h3 className="font-bold text-xl">{leaderboard.entries[1]?.username}</h3>
+                          <p className="text-xl font-bold text-slate-400 mb-2">
                             {formatPoints(leaderboard.entries[1]?.total_points || 0)}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-base text-muted-foreground">
                             {leaderboard.entries[1]?.challenges_solved} challenges
                           </p>
+                          <Badge variant="secondary" className="mt-3">2nd Place</Badge>
                         </div>
                       </div>
 
                       {/* 1st Place */}
                       <div className="order-2 text-center">
-                        <div className="bg-yellow-400/20 rounded-2xl p-6 border border-yellow-400/40 transform scale-105">
-                          <Crown className="h-10 w-10 text-yellow-400 mx-auto mb-2" />
-                          <h3 className="font-bold text-xl">{leaderboard.entries[0]?.username}</h3>
-                          <p className="text-xl font-mono text-yellow-400">
+                        <div className="bg-gradient-to-br from-yellow-500/20 via-yellow-500/15 to-yellow-500/10 rounded-2xl p-8 border border-yellow-500/30 transform scale-105 shadow-2xl">
+                          <Crown className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+                          <h3 className="font-bold text-2xl">{leaderboard.entries[0]?.username}</h3>
+                          <p className="text-2xl font-bold text-yellow-400 mb-3">
                             {formatPoints(leaderboard.entries[0]?.total_points || 0)}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-base text-muted-foreground mb-3">
                             {leaderboard.entries[0]?.challenges_solved} challenges
                           </p>
-                          <Badge variant="default" className="mt-2">Champion</Badge>
+                          <Badge variant="default" className="text-base px-4 py-2">Champion</Badge>
                         </div>
                       </div>
 
                       {/* 3rd Place */}
                       <div className="order-3 text-center">
-                        <div className="bg-amber-600/20 rounded-2xl p-4 border border-amber-600/40">
-                          <Award className="h-8 w-8 text-amber-600 mx-auto mb-2" />
-                          <h3 className="font-bold text-lg">{leaderboard.entries[2]?.username}</h3>
-                          <p className="text-lg font-mono text-amber-600">
+                        <div className="bg-gradient-to-br from-amber-600/20 via-amber-600/15 to-amber-600/10 rounded-2xl p-6 border border-amber-600/30 shadow-lg">
+                          <Award className="h-10 w-10 text-amber-600 mx-auto mb-3" />
+                          <h3 className="font-bold text-xl">{leaderboard.entries[2]?.username}</h3>
+                          <p className="text-xl font-bold text-amber-600 mb-2">
                             {formatPoints(leaderboard.entries[2]?.total_points || 0)}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-base text-muted-foreground">
                             {leaderboard.entries[2]?.challenges_solved} challenges
                           </p>
+                          <Badge variant="warning" className="mt-3">3rd Place</Badge>
                         </div>
                       </div>
                     </div>
@@ -233,7 +241,7 @@ export default function LeaderboardPage() {
                               <p className="font-medium flex items-center gap-2">
                                 {entry.username}
                                 {entry.is_current_user && (
-                                  <Badge variant="terminal" className="text-xs">YOU</Badge>
+                                  <Badge variant="default" className="text-xs">YOU</Badge>
                                 )}
                               </p>
                               <p className="text-sm text-muted-foreground">

@@ -486,3 +486,42 @@ export function useWeekChallenges(seasonId: string, weekIndex: number) {
     staleTime: 2 * 60 * 1000, // 2 minutes
   })
 }
+
+// User Management Hooks (Admin)
+export function useUsers(filters: {
+  search?: string
+  role?: string
+  status?: string
+  limit?: number
+  offset?: number
+} = {}) {
+  return useQuery({
+    queryKey: ['admin', 'users', filters],
+    queryFn: async () => {
+      const response = await apiClient.getUsers(filters)
+      if (response.error) {
+        throw new Error(response.error.message)
+      }
+      return response.data
+    },
+    staleTime: 30 * 1000, // 30 seconds
+  })
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ userId, updates }: {
+      userId: string
+      updates: { role?: string; is_active?: boolean }
+    }) => apiClient.updateUser(userId, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
+      toast.success('User updated successfully')
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to update user')
+    },
+  })
+}

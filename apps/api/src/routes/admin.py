@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import uuid
@@ -7,10 +8,13 @@ from datetime import datetime
 
 from ..database import get_db
 from ..models.user import User
-from ..models.challenge import Challenge, ChallengeStatus, Artifact, Hint, ValidatorConfig
+from ..models.challenge import Challenge, ChallengeStatus, Artifact, Hint, ValidatorConfig, HintConsumption
 from ..models.season import Season, Week
 from ..models.audit import AuditLog
 from ..models.leaderboard import LeaderboardSnapshot
+from ..models.submission import Submission
+from ..models.two_factor import TwoFactorSettings
+from ..models.lab import LabTemplate
 from ..utils.auth import require_admin, require_author
 from ..utils.logging import get_logger
 
@@ -37,6 +41,53 @@ class AuditLogResponse(BaseModel):
     entity_id: str
     details_json: Dict[str, Any]
     created_at: datetime
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    active_seasons: int
+    total_challenges: int
+    pending_challenges: int
+    this_week_submissions: int
+    ai_generations_today: int
+
+@router.get("/stats", response_model=AdminStatsResponse)
+async def get_admin_stats(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Aggregated admin dashboard statistics"""
+    # Total users
+    total_users = db.query(func.count(User.id)).scalar() or 0
+
+    # Active seasons
+    now = datetime.now()
+    active_seasons = db.query(Season).filter(Season.start_at <= now, Season.end_at >= now).count()
+
+    # Total challenges and pending (DRAFT/READY) counts
+    total_challenges = db.query(Challenge).count()
+    pending_challenges = db.query(Challenge).filter(Challenge.status.in_([ChallengeStatus.DRAFT, ChallengeStatus.READY])).count()
+
+    # This week's submissions (UTC week window)
+    from datetime import timedelta
+    start_of_week = now - timedelta(days=now.weekday())
+    start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+    this_week_submissions = db.query(Submission).filter(Submission.created_at >= start_of_week).count()
+
+    # AI generations today (best-effort from AuditLog)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    ai_generations_today = db.query(AuditLog).filter(
+        AuditLog.action == "ai_challenge_generated",
+        AuditLog.created_at >= start_of_day
+    ).count()
+
+    return AdminStatsResponse(
+        total_users=int(total_users),
+        active_seasons=int(active_seasons or 0),
+        total_challenges=int(total_challenges or 0),
+        pending_challenges=int(pending_challenges or 0),
+        this_week_submissions=int(this_week_submissions or 0),
+        ai_generations_today=int(ai_generations_today or 0),
+    )
 
 @router.post("/challenges", status_code=status.HTTP_201_CREATED)
 async def create_challenge(
@@ -290,7 +341,7 @@ async def create_leaderboard_snapshot(
         user_scores = db.query(
             Submission.user_id,
             func.sum(Submission.points_awarded).label('total_points'),
-            func.count(Submission.id).filter(Submission.is_correct == True).label('challenges_solved'),
+            func.count(Submission.id.distinct()).filter(Submission.is_correct == True).label('challenges_solved'),
             func.max(Submission.created_at).label('last_submission')
         ).filter(
             Submission.is_correct == True,
@@ -352,6 +403,147 @@ async def create_leaderboard_snapshot(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Snapshot creation failed: {str(e)}"
         )
+
+@router.get("/users", response_model=List[dict])
+async def get_users(
+    search: Optional[str] = Query(None, description="Search by username or email"),
+    role: Optional[str] = Query(None, description="Filter by role"),
+    status: Optional[str] = Query(None, description="Filter by active status"),
+    limit: int = Query(50, le=200, description="Maximum number of users to return"),
+    offset: int = Query(0, description="Offset for pagination"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get users with filtering and pagination (admin only)"""
+    
+    query = db.query(User)
+    
+    # Apply filters
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (User.username.ilike(search_term)) | 
+            (User.email.ilike(search_term))
+        )
+    if role:
+        query = query.filter(User.role == role)
+    if status == 'active':
+        query = query.filter(User.is_active == True)
+    elif status == 'inactive':
+        query = query.filter(User.is_active == False)
+    
+    # Order by creation date (newest first)
+    query = query.order_by(User.created_at.desc())
+    
+    # Apply pagination
+    users = query.offset(offset).limit(limit).all()
+    
+    # Get user stats (points, challenges solved, etc.)
+    user_responses = []
+    for user in users:
+        # Calculate user stats
+        total_points = db.query(func.sum(Submission.points_awarded)).filter(
+            Submission.user_id == user.id,
+            Submission.is_correct == True
+        ).scalar() or 0
+        
+        challenges_solved = db.query(func.count(func.distinct(Submission.challenge_id))).filter(
+            Submission.user_id == user.id,
+            Submission.is_correct == True
+        ).scalar() or 0
+        
+        # Get user rank (simplified)
+        user_rank = db.query(func.count()).select_from(
+            db.query(Submission.user_id, func.sum(Submission.points_awarded).label('total'))
+            .filter(Submission.is_correct == True)
+            .group_by(Submission.user_id)
+            .having(func.sum(Submission.points_awarded) > total_points)
+            .subquery()
+        ).scalar() + 1 if total_points > 0 else None
+
+        print("Parsed user:", user.__dict__)
+        user_responses.append({
+            "id": str(user.id),
+            "username": user.username,
+            "email": user.email,
+            "role": user.role.value,
+            # "is_active": user.is_active,
+            "created_at": user.created_at,
+            "last_login": user.last_login,
+            "total_points": int(total_points),
+            "challenges_solved": int(challenges_solved),
+            "rank": user_rank,
+            "totp_enabled": bool(user.totp_secret),
+            "email_2fa_enabled": bool(
+                db.query(TwoFactorSettings).filter(
+                    TwoFactorSettings.user_id == user.id,
+                    TwoFactorSettings.email_2fa_enabled == True
+                ).first()
+            )
+        })
+    
+    return user_responses
+
+@router.patch("/users/{user_id}")
+async def update_user(
+    user_id: str,
+    role: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Update user (admin only)"""
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Store original values for audit
+    original_values = {
+        "role": user.role,
+        "is_active": user.is_active
+    }
+    
+    # Update fields
+    changes = {}
+    if role is not None and role != user.role.value:
+        from ..models.user import UserRole
+        try:
+            user.role = UserRole(role)
+            changes["role"] = {"from": original_values["role"].value, "to": role}
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role: {role}"
+            )
+    
+    if is_active is not None and is_active != user.is_active:
+        user.is_active = is_active
+        changes["is_active"] = {"from": original_values["is_active"], "to": is_active}
+    
+    user.updated_at = datetime.utcnow()
+    
+    # Audit log
+    if changes:
+        audit = AuditLog(
+            actor_user_id=current_user.id,
+            action="user_updated",
+            entity_type="user",
+            entity_id=user_id,
+            details_json={"changes": changes}
+        )
+        db.add(audit)
+    
+    db.commit()
+    
+    return {
+        "user_id": user_id,
+        "changes": changes,
+        "message": "User updated successfully"
+    }
 
 def _is_valid_status_transition(current: ChallengeStatus, new: ChallengeStatus) -> bool:
     """Validate challenge status transitions"""

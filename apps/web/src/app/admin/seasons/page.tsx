@@ -100,7 +100,7 @@ export default function AdminSeasonsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-8 p-8">
         <div className="animate-pulse">
           <div className="h-8 bg-slate-700 rounded w-1/3 mb-4"></div>
           <div className="h-4 bg-slate-700 rounded w-1/2"></div>
@@ -110,7 +110,7 @@ export default function AdminSeasonsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">

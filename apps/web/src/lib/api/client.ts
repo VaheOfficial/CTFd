@@ -94,13 +94,13 @@ class ApiClient {
         data = await response.text()
       }
 
-      if (!response.ok) {
+      if (!response.ok || response.status === 202) {
         // Special handling for 202 (2FA required) - include headers
         const headers = response.status === 202 ? Object.fromEntries(response.headers.entries()) : undefined
         
         return {
           error: {
-            message: data?.message || `HTTP ${response.status}`,
+            message: data?.detail || data?.message || `HTTP ${response.status}`,
             status: response.status,
             details: data,
             headers,
@@ -346,6 +346,11 @@ class ApiClient {
     })
   }
 
+  // Admin Stats
+  async getAdminStats() {
+    return this.request('/api/admin/stats')
+  }
+
   async createSeason(season: any) {
     return this.request('/api/seasons', {
       method: 'POST',
@@ -358,17 +363,17 @@ class ApiClient {
   }
 
   // Two-Factor Authentication
-  async send2FACode(email: string, purpose: string = 'login') {
+  async send2FACode(username: string, purpose: string = 'login') {
     return this.request('/api/auth/2fa/send-code', {
       method: 'POST',
-      body: { email, purpose }
+      body: { username, purpose }
     })
   }
 
-  async verify2FACode(email: string, code: string, purpose: string = 'login') {
+  async verify2FACode(username: string, code: string, purpose: string = 'login') {
     return this.request('/api/auth/2fa/verify-code', {
       method: 'POST', 
-      body: { email, code, purpose }
+      body: { username, code, purpose }
     })
   }
 
@@ -380,6 +385,34 @@ class ApiClient {
     return this.request('/api/auth/2fa/enable', {
       method: 'POST',
       body: { enable }
+    })
+  }
+
+  // User Management (Admin)
+  async getUsers(filters: {
+    search?: string
+    role?: string
+    status?: string
+    limit?: number
+    offset?: number
+  } = {}) {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined) {
+        params.append(key, value.toString())
+      }
+    })
+    
+    return this.request(`/api/admin/users?${params}`)
+  }
+
+  async updateUser(userId: string, updates: {
+    role?: string
+    is_active?: boolean
+  }) {
+    return this.request(`/api/admin/users/${userId}`, {
+      method: 'PATCH',
+      body: updates,
     })
   }
 

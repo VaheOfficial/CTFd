@@ -71,117 +71,218 @@ CTE Platform Security Team
     <title>CTE Platform - Verification Code</title>
     <style>
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
             color: #e2e8f0;
-            background-color: #0f172a;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             margin: 0;
             padding: 0;
+            min-height: 100vh;
         }}
         .container {{
             max-width: 600px;
             margin: 0 auto;
             padding: 20px;
+            background: #0f172a;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid #334155;
         }}
         .header {{
             text-align: center;
-            padding: 40px 0;
+            padding: 40px 20px;
             border-bottom: 1px solid #334155;
+            position: relative;
         }}
         .logo {{
-            width: 60px;
-            height: 60px;
+            width: 80px;
+            height: 80px;
             background: linear-gradient(135deg, #10b981, #059669);
-            border-radius: 12px;
-            margin: 0 auto 20px;
+            border-radius: 20px;
+            margin: 0 auto 24px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 24px;
+            font-size: 32px;
             font-weight: bold;
+            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+            position: relative;
+        }}
+        .logo::before {{
+            content: '';
+            position: absolute;
+            inset: -2px;
+            background: linear-gradient(135deg, #10b981, #059669, #047857);
+            border-radius: 22px;
+            z-index: -1;
+            opacity: 0.7;
+        }}
+        .brand-title {{
+            color: #f1f5f9;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #f1f5f9, #cbd5e1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+        .brand-subtitle {{
+            color: #10b981;
+            margin: 8px 0 0;
+            font-size: 14px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
         .content {{
-            padding: 40px 0;
+            padding: 40px 20px;
             text-align: center;
         }}
-        .code-box {{
-            background: #1e293b;
+        .greeting {{
+            color: #f1f5f9;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }}
+        .description {{
+            color: #cbd5e1;
+            font-size: 16px;
+            margin-bottom: 32px;
+            line-height: 1.7;
+        }}
+        .code-container {{
+            background: linear-gradient(135deg, #1e293b, #334155);
             border: 2px solid #10b981;
-            border-radius: 12px;
-            padding: 30px;
-            margin: 30px 0;
-            text-align: center;
+            border-radius: 16px;
+            padding: 40px 20px;
+            margin: 32px 0;
+            position: relative;
+            overflow: hidden;
+        }}
+        .code-container::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #10b981, #059669, #047857);
+        }}
+        .code-label {{
+            color: #94a3b8;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
         .code {{
-            font-size: 36px;
-            font-weight: bold;
+            font-size: 42px;
+            font-weight: 800;
             color: #10b981;
-            letter-spacing: 8px;
-            font-family: 'Courier New', monospace;
+            letter-spacing: 12px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+            text-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+            margin: 16px 0;
+        }}
+        .code-expiry {{
+            color: #94a3b8;
+            font-size: 14px;
+            margin-top: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }}
         .warning {{
-            background: #7c2d12;
+            background: linear-gradient(135deg, #7c2d12, #991b1b);
             border: 1px solid #dc2626;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 30px 0;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 32px 0;
             color: #fecaca;
+            position: relative;
+        }}
+        .warning::before {{
+            content: '⚠️';
+            font-size: 20px;
+            margin-right: 8px;
+        }}
+        .warning-title {{
+            font-weight: 600;
+            margin-bottom: 8px;
         }}
         .footer {{
             border-top: 1px solid #334155;
-            padding: 30px 0;
+            padding: 32px 20px;
             text-align: center;
             color: #64748b;
             font-size: 14px;
+            line-height: 1.6;
         }}
-        .btn {{
-            display: inline-block;
-            background: #10b981;
-            color: white;
-            padding: 12px 24px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 500;
-            margin: 20px 0;
+        .footer-brand {{
+            color: #10b981;
+            font-weight: 600;
+            margin-top: 16px;
+        }}
+        @media (max-width: 640px) {{
+            .container {{
+                margin: 10px;
+                padding: 16px;
+            }}
+            .code {{
+                font-size: 32px;
+                letter-spacing: 8px;
+            }}
+            .logo {{
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }}
         }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="logo">🛡️</div>
-            <h1 style="color: #f1f5f9; margin: 0;">CTE Platform</h1>
-            <p style="color: #94a3b8; margin: 10px 0 0;">Cyber Training Excellence</p>
-        </div>
-        
-        <div class="content">
-            <h2 style="color: #f1f5f9;">Hello {username},</h2>
-            <p style="color: #cbd5e1; font-size: 16px;">
-                You're trying to {purpose_text}. Use the verification code below:
-            </p>
+    <div style="padding: 20px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh;">
+        <div class="container">
+            <div class="header">
+                <div class="logo">🛡️</div>
+                <h1 class="brand-title">CTE Platform</h1>
+                <p class="brand-subtitle">Cyber Training Excellence</p>
+            </div>
             
-            <div class="code-box">
-                <div class="code">{code}</div>
-                <p style="color: #94a3b8; margin: 10px 0 0; font-size: 14px;">
-                    This code expires in 5 minutes
+            <div class="content">
+                <h2 class="greeting">Hello {username},</h2>
+                <p class="description">
+                    You're trying to {purpose_text}. Please use the verification code below to continue:
                 </p>
+                
+                <div class="code-container">
+                    <div class="code-label">Verification Code</div>
+                    <div class="code">{code}</div>
+                    <div class="code-expiry">
+                        <span>⏱️</span>
+                        <span>This code expires in 5 minutes</span>
+                    </div>
+                </div>
+                
+                <div class="warning">
+                    <div class="warning-title">Security Notice</div>
+                    <div>If you didn't request this code, please ignore this email and consider securing your account.</div>
+                </div>
             </div>
             
-            <div class="warning">
-                <strong>⚠️ Security Notice:</strong><br>
-                If you didn't request this code, please ignore this email and secure your account.
+            <div class="footer">
+                <p>
+                    This email was sent from the CTE Platform Security System.<br>
+                    Please do not reply to this automated message.
+                </p>
+                <div class="footer-brand">
+                    CTE Platform - Defensive Cyber Operations Training
+                </div>
             </div>
-        </div>
-        
-        <div class="footer">
-            <p>
-                This email was sent from CTE Platform Security System.<br>
-                Please do not reply to this email.
-            </p>
-            <p style="margin-top: 20px;">
-                <strong>CTE Platform</strong> - Defensive Cyber Operations Training
-            </p>
         </div>
     </div>
 </body>
