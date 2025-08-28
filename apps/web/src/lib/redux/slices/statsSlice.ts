@@ -82,7 +82,7 @@ const initialState: StatsState = {
   },
 }
 
-export const loadAllStats = createAsyncThunk(
+export const loadAllStats = createAsyncThunk<any, void>(
   'stats/loadAll',
   async (_, { rejectWithValue }) => {
     try {
@@ -120,7 +120,7 @@ export const loadAllStats = createAsyncThunk(
   }
 )
 
-export const loadAdminStats = createAsyncThunk(
+export const loadAdminStats = createAsyncThunk<any, void>(
   'stats/loadAdmin',
   async (_, { rejectWithValue }) => {
     try {
@@ -192,7 +192,9 @@ const statsSlice = createSlice({
   },
 })
 
+// Export the slice actions
 export const { clearStats, setActiveSeasonId } = statsSlice.actions
-export default statsSlice.reducer
 
+// Export the reducer
+export default statsSlice.reducer
 
