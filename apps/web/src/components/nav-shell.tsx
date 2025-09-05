@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { MobileDrawer } from '@/components/shared/mobile-drawer'
+import { NotificationPopover } from '@/components/notification-popover'
 import { 
   Shield, 
   Trophy, 
@@ -133,8 +134,8 @@ export function NavShell({ children }: { children: React.ReactNode }) {
                     className={cn(
                       "w-full h-12 rounded-lg text-base font-medium transition-all duration-200",
                       !isAdminPage 
-                        ? "bg-primary text-primary-foreground shadow-md" 
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        ? "bg-primary text-primary-foreground shadow-md hover:bg-primary/90" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-primary/10"
                     )}
                   >
                     User
@@ -275,14 +276,9 @@ export function NavShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Floating Notifications Button - Desktop Only */}
-      <Button
-        variant="ghost"
-        size="icon-lg"
-        className="hidden lg:flex fixed top-6 right-6 z-50 h-14 w-14 rounded-2xl bg-card/90 backdrop-blur-xl border border-border/50 shadow-xl hover:shadow-2xl text-muted-foreground hover:text-foreground hover:bg-card transition-all duration-200 hover:scale-105"
-      >
-        <Bell className="h-6 w-6" />
-        <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-accent border-2 border-card" />
-      </Button>
+      <div className="hidden lg:block">
+        <NotificationPopover />
+      </div>
 
       {/* Mobile Drawer */}
       <MobileDrawer 

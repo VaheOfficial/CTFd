@@ -94,6 +94,8 @@ services:
       - KASM_API_URL=${KASM_API_URL:-}
       - KASM_API_TOKEN=${KASM_API_TOKEN:-}
       - WIREGUARD_ADAPTER_URL=${WIREGUARD_ADAPTER_URL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - PYTHONPATH=/app
     depends_on:
       - postgres
@@ -122,6 +124,8 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minio123}
       - S3_BUCKET=${S3_BUCKET:-cte-artifacts}
       - HMAC_SECRET=${HMAC_SECRET:-change_me_32_char_secret_12345}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - PYTHONPATH=/app
     depends_on:
       - postgres

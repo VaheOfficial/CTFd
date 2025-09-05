@@ -13,6 +13,7 @@ from ..database import get_db
 from ..models.user import User
 from ..models.challenge import Challenge, ChallengeStatus
 from ..models.generation import GenerationPlan, GenerationStatus
+from ..services.ai_validator import AIValidator
 from ..models.audit import AuditLog
 from ..utils.auth import require_author
 from ..models.season import Season, Week, WeekChallenge
@@ -45,6 +46,9 @@ class MaterializeRequest(BaseModel):
 class PublishRequest(BaseModel):
     season_id: Optional[str] = None
     week_index: Optional[int] = Field(None, ge=1, le=52)
+
+class RetryValidationRequest(BaseModel):
+    validation_type: str = Field(..., pattern="^(initial|post_materialization)$")
 
 def rate_limit_ai_generation(max_per_minute: int = 5):
     def decorator(func):
@@ -157,13 +161,17 @@ async def generate_challenge(
             points_base=response.parsed_json['points'],
             time_cap_minutes=response.parsed_json['time_cap_minutes'],
             mode=response.parsed_json['mode'],
-            status=ChallengeStatus.DRAFT,
+            status=ChallengeStatus.VALIDATION_PENDING,
             author_id=current_user.id,
             description=response.parsed_json.get('description', '')
         )
         
         db.add(challenge)
         db.flush()  # Get challenge ID
+        
+        # Trigger initial validation
+        validator = AIValidator(db)
+        validation_result = await validator.validate_challenge(challenge, "initial")
         
         # Create generation plan
         generation_plan = GenerationPlan(
@@ -270,6 +278,10 @@ async def materialize_challenge(
         # Update status
         generation_plan.status = GenerationStatus.MATERIALIZED
         generation_plan.materialized_at = datetime.utcnow()
+        
+        # Trigger post-materialization validation
+        validator = AIValidator(db)
+        validation_result = await validator.validate_challenge(challenge, "post_materialization")
         
         # Audit log
         audit = AuditLog(

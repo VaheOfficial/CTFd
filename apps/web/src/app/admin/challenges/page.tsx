@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { Challenge } from '@/types/challenge'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useChallenges, useCreateChallenge } from '@/lib/api/hooks'
+import { useChallenges, useCreateChallenge, useRetryValidation } from '@/lib/api/hooks'
 import { formatPoints, getDifficultyVariant, getTrackColor } from '@/lib/utils'
 import { 
   Target, 
@@ -25,8 +26,11 @@ import {
   Users,
   CheckCircle,
   AlertCircle,
-  FileText
+  FileText,
+  Info,
+  RefreshCw
 } from 'lucide-react'
+import { ValidationDetails } from '@/components/validation-details'
 
 export default function AdminChallengesPage() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -34,40 +38,70 @@ export default function AdminChallengesPage() {
   const [trackFilter, setTrackFilter] = useState('all')
   const [difficultyFilter, setDifficultyFilter] = useState('all')
   
-  const { data: challenges, isLoading } = useChallenges({
-    search: searchQuery,
-    status: statusFilter !== 'all' ? statusFilter : undefined,
-    track: trackFilter !== 'all' ? trackFilter : undefined,
-    difficulty: difficultyFilter !== 'all' ? difficultyFilter : undefined
-  })
-
+  const { data: challenges = [], isLoading } = useChallenges() as unknown as { data: Challenge[], isLoading: boolean }
+  const retryValidation = useRetryValidation()
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'published':
         return <CheckCircle className="h-4 w-4 text-green-400" />
       case 'draft':
         return <Edit className="h-4 w-4 text-yellow-400" />
       case 'archived':
         return <AlertCircle className="h-4 w-4 text-slate-400" />
+      case 'validation_pending':
+        return <Clock className="h-4 w-4 text-blue-400 animate-spin" />
+      case 'validation_failed':
+        return <AlertCircle className="h-4 w-4 text-red-400" />
+      case 'ready_for_materialization':
+        return <CheckCircle className="h-4 w-4 text-green-400" />
+      case 'materialization_pending':
+        return <Clock className="h-4 w-4 text-blue-400 animate-spin" />
+      case 'materialization_failed':
+        return <AlertCircle className="h-4 w-4 text-red-400" />
+      case 'ready_for_publishing':
+        return <CheckCircle className="h-4 w-4 text-green-400" />
       default:
         return <FileText className="h-4 w-4 text-slate-400" />
     }
   }
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'published':
         return <Badge variant="default">PUBLISHED</Badge>
       case 'draft':
         return <Badge variant="warning">DRAFT</Badge>
       case 'archived':
         return <Badge variant="outline">ARCHIVED</Badge>
+      case 'validation_pending':
+        return <Badge variant="secondary" className="animate-pulse">VALIDATING</Badge>
+      case 'validation_failed':
+        return <Badge variant="destructive">VALIDATION FAILED</Badge>
+      case 'ready_for_materialization':
+        return <Badge variant="default">READY FOR MATERIALIZATION</Badge>
+      case 'materialization_pending':
+        return <Badge variant="secondary" className="animate-pulse">MATERIALIZING</Badge>
+      case 'materialization_failed':
+        return <Badge variant="destructive">MATERIALIZATION FAILED</Badge>
+      case 'ready_for_publishing':
+        return <Badge variant="default">READY FOR PUBLISHING</Badge>
       default:
         return <Badge variant="outline">{status.toUpperCase()}</Badge>
     }
   }
 
-  const filteredChallenges = challenges || []
+  const filteredChallenges = challenges.filter(challenge => {
+    console.log(`challenge: ${JSON.stringify(challenge)}`)
+    const matchesSearch = !searchQuery || 
+      challenge.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      challenge.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    const matchesStatus = statusFilter === 'all' || challenge.status.toLowerCase() === statusFilter
+    const matchesTrack = trackFilter === 'all' || challenge.track === trackFilter
+    const matchesDifficulty = difficultyFilter === 'all' || challenge.difficulty === difficultyFilter
+
+    return matchesSearch && matchesStatus && matchesTrack && matchesDifficulty
+  })
 
   if (isLoading) {
     return (
@@ -81,7 +115,7 @@ export default function AdminChallengesPage() {
   }
 
   return (
-    <div className="space-y-8 p-8">
+    <div className="space-y-8 py-8 px-24">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -103,10 +137,12 @@ export default function AdminChallengesPage() {
               AI Generator
             </Button>
           </Link>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Challenge
-          </Button>
+          <Link href="/admin/challenges/create">
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Challenge
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -123,7 +159,7 @@ export default function AdminChallengesPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Search</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search challenges..."
                   value={searchQuery}
@@ -143,6 +179,12 @@ export default function AdminChallengesPage() {
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="published">Published</SelectItem>
                   <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="validation_pending">Validating</SelectItem>
+                  <SelectItem value="validation_failed">Validation Failed</SelectItem>
+                  <SelectItem value="ready_for_materialization">Ready for Materialization</SelectItem>
+                  <SelectItem value="materialization_pending">Materializing</SelectItem>
+                  <SelectItem value="materialization_failed">Materialization Failed</SelectItem>
+                  <SelectItem value="ready_for_publishing">Ready for Publishing</SelectItem>
                   <SelectItem value="archived">Archived</SelectItem>
                 </SelectContent>
               </Select>
@@ -156,11 +198,11 @@ export default function AdminChallengesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Tracks</SelectItem>
-                  <SelectItem value="web">Web Security</SelectItem>
-                  <SelectItem value="forensics">Digital Forensics</SelectItem>
-                  <SelectItem value="crypto">Cryptography</SelectItem>
-                  <SelectItem value="network">Network Security</SelectItem>
-                  <SelectItem value="malware">Malware Analysis</SelectItem>
+                  <SelectItem value="INTEL_RECON">Intel & Recon</SelectItem>
+                  <SelectItem value="ACCESS_EXPLOIT">Access & Exploit</SelectItem>
+                  <SelectItem value="IDENTITY_CLOUD">Identity & Cloud</SelectItem>
+                  <SelectItem value="C2_EGRESS">C2 & Egress</SelectItem>
+                  <SelectItem value="DETECT_FORENSICS">Detect & Forensics</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -173,10 +215,10 @@ export default function AdminChallengesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Levels</SelectItem>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
-                  <SelectItem value="insane">Insane</SelectItem>
+                  <SelectItem value="EASY">Easy</SelectItem>
+                  <SelectItem value="MEDIUM">Medium</SelectItem>
+                  <SelectItem value="HARD">Hard</SelectItem>
+                  <SelectItem value="INSANE">Insane</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -246,7 +288,7 @@ export default function AdminChallengesPage() {
       {/* Challenges List */}
       <div className="space-y-4">
         {filteredChallenges.length > 0 ? (
-          filteredChallenges.map((challenge: any) => (
+          filteredChallenges.map((challenge: Challenge) => (
             <Card key={challenge.id} className="hover:border-brand/50 transition-colors">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -295,6 +337,17 @@ export default function AdminChallengesPage() {
                   </div>
                   
                   <div className="flex items-center space-x-2">
+                    {challenge.latest_validation && (
+                      <ValidationDetails 
+                        validation={challenge.latest_validation}
+                        onRetry={challenge.status === 'VALIDATION_FAILED' ? () => {
+                          retryValidation.mutate({
+                            challengeId: challenge.id,
+                            validationType: challenge.latest_validation?.validation_type || 'initial'
+                          })
+                        } : undefined}
+                      />
+                    )}
                     <Link href={`/challenges/${challenge.slug}`}>
                       <Button variant="outline" size="sm">
                         <Eye className="h-4 w-4 mr-1" />
@@ -338,10 +391,12 @@ export default function AdminChallengesPage() {
                       Use AI Generator
                     </Button>
                   </Link>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Challenge
-                  </Button>
+                  <Link href="/admin/challenges/create">
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Challenge
+                    </Button>
+                  </Link>
                 </div>
               )}
             </CardContent>

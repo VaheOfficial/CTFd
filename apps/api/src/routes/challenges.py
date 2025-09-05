@@ -8,7 +8,7 @@ import secrets
 from datetime import datetime, timedelta
 
 from ..database import get_db
-from ..models.user import User
+from ..models.user import User, UserRole
 from ..models.challenge import Challenge, ChallengeInstance, Artifact, HintConsumption, Hint
 from ..models.season import WeekChallenge, Week
 from ..models.lab import LabTemplate, LabInstance, LabInstanceStatus
@@ -26,6 +26,7 @@ class ChallengeResponse(BaseModel):
     slug: str
     title: str
     track: str
+    status: str
     difficulty: str
     points_base: int
     time_cap_minutes: int
@@ -62,7 +63,10 @@ async def get_challenges(
     """Get all available challenges with optional filtering"""
     
     # Base query - only show published challenges
-    query = db.query(Challenge).filter(Challenge.status == "PUBLISHED")
+    if current_user.role == UserRole.ADMIN:
+        query = db.query(Challenge)
+    else:
+        query = db.query(Challenge).filter(Challenge.status == "PUBLISHED")
     
     # Apply filters
     if track:
@@ -129,6 +133,7 @@ async def get_challenges(
             id=str(challenge.id),
             slug=challenge.slug,
             title=challenge.title,
+            status=challenge.status,
             track=challenge.track,
             difficulty=challenge.difficulty,
             points_base=challenge.points_base,
@@ -142,6 +147,7 @@ async def get_challenges(
     
     return challenge_responses
     
+
 @router.get("/challenges/slug/{slug}", response_model=ChallengeResponse)
 async def get_challenge_by_slug(
     slug: str,
@@ -219,6 +225,7 @@ async def get_challenge(
         slug=challenge.slug,
         title=challenge.title,
         track=challenge.track,
+        status=challenge.status,
         difficulty=challenge.difficulty,
         points_base=challenge.points_base,
         time_cap_minutes=challenge.time_cap_minutes,

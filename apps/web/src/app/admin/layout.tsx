@@ -19,10 +19,12 @@ import {
   Crown,
   Activity,
   Bell,
+  ArrowLeft,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useMe } from '@/lib/api/hooks'
 import { AuthGuard } from '@/components/auth/AuthGuard'
+import { NotificationPopover } from '@/components/notification-popover'
 
 const adminNavigation = [
   {
@@ -41,7 +43,7 @@ const adminNavigation = [
     name: 'Challenges',
     href: '/admin/challenges',
     icon: Target,
-    description: 'Challenge library and management'
+    description: 'Library and management'
   },
   {
     name: 'AI Generator',
@@ -72,6 +74,12 @@ const adminNavigation = [
     href: '/admin/analytics',
     icon: BarChart3,
     description: 'Platform analytics and insights'
+  },
+  {
+    name: 'Notifications',
+    href: '/admin/notifications',
+    icon: Bell,
+    description: 'Manage notifications'
   }
 ]
 
@@ -106,21 +114,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <aside className="fixed inset-y-0 left-0 z-50 w-80 bg-card backdrop-blur-xl border-r border-border/50">
           <div className="flex flex-col h-full">
             {/* Admin Header - Modern Design */}
-            <div className="px-6 py-8">
+            <div className="px-6 py-8 flex flex-row items-center justify-start gap-4">
+              <Link href="/" className="flex items-center group">
+                <ArrowLeft className="h-6 w-6 text-muted-foreground hover:text-primary transition-colors" />
+              </Link>
               <Link href="/admin" className="flex items-center space-x-4 group">
                 <div className="relative">
-                  <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary via-primary/95 to-primary/90 flex items-center justify-center shadow-lg shadow-primary/25 transition-all duration-200 group-hover:shadow-primary/40">
-                    <Crown className="h-9 w-9 text-primary-foreground" />
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-accent rounded-full border-2 border-card flex items-center justify-center">
-                    <div className="h-2.5 w-2.5 bg-white rounded-full"></div>
+                  <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary via-primary/95 to-primary/90 flex items-center justify-center shadow-lg shadow-primary/25 transition-all duration-200 group-hover:shadow-primary/40">
+                    <Crown className="h-8 w-8 text-primary-foreground" />
                   </div>
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors">
+                  <h1 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors">
                     Admin Panel
                   </h1>
-                  <p className="text-base text-muted-foreground">Platform Management</p>
+                  <p className="text-sm text-muted-foreground">Platform Management</p>
                 </div>
               </Link>
             </div>
@@ -134,14 +142,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div className="space-y-2">
                   {adminNavigation.map((item) => {
                     const isActive = pathname === item.href
-                    const IconComponent = item.icon
+                    const IconComponent = item.icon as React.ElementType
                     
                     return (
                       <Link
                         key={item.name}
-                        href={item.href}
+                        href={item.href || ''}
                         className={cn(
-                          'flex flex-col gap-2 px-4 py-4 rounded-xl text-base font-medium transition-all duration-200 group relative min-h-[64px]',
+                          'flex flex-col gap-2 px-4 py-2 rounded-xl text-base font-medium transition-all duration-200 group relative min-h-[64px]',
                           isActive
                             ? 'bg-gradient-to-r from-primary via-primary/95 to-primary/90 text-primary-foreground shadow-lg'
                             : 'text-muted-foreground hover:bg-card/80 hover:text-foreground'
@@ -191,14 +199,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         {/* Floating Notifications Button - Desktop Only */}
-        <Button
-          variant="ghost"
-          size="icon-lg"
-          className="hidden lg:flex fixed top-6 right-6 z-50 h-14 w-14 rounded-2xl bg-card/90 backdrop-blur-xl border border-border/50 shadow-xl hover:shadow-2xl text-muted-foreground hover:text-foreground hover:bg-card transition-all duration-200 hover:scale-105"
-        >
-          <Bell className="h-6 w-6" />
-          <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-accent border-2 border-card" />
-        </Button>
+        <div className="hidden lg:block">
+          <NotificationPopover />
+        </div>
       </div>
     </AuthGuard>
   )

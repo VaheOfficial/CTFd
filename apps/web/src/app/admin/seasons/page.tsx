@@ -15,13 +15,9 @@ import {
   Trophy, 
   Plus, 
   Calendar, 
-  Users, 
-  Target, 
   Settings, 
-  ArrowRight,
-  Edit,
   Eye,
-  Star,
+  BadgeCheckIcon,
   Clock,
   CheckCircle
 } from 'lucide-react'
@@ -75,7 +71,7 @@ export default function AdminSeasonsPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'active':
-        return <Star className="h-4 w-4 text-yellow-400" />
+        return <BadgeCheckIcon className="h-4 w-4 text-yellow-400" />
       case 'upcoming':
         return <Clock className="h-4 w-4 text-blue-400" />
       case 'completed':
@@ -110,7 +106,7 @@ export default function AdminSeasonsPage() {
   }
 
   return (
-    <div className="space-y-8 p-8">
+    <div className="space-y-8 py-8 px-24">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">

@@ -11,7 +11,7 @@ export type ApiResponse<T> = {
 }
 
 export type ApiRequestOptions = {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT'
   headers?: Record<string, string>
   body?: any
   signal?: AbortSignal
@@ -416,6 +416,41 @@ class ApiClient {
     })
   }
 
+  // Notifications
+  async getNotifications() {
+    return this.request('/api/notifications')
+  }
+
+  async createNotification(notification: {
+    title: string
+    message: string
+    user_id?: number
+    is_global: boolean
+  }) {
+    return this.request('/api/notifications', {
+      method: 'POST',
+      body: notification,
+    })
+  }
+
+  async markNotificationAsRead(notificationId: number) {
+    return this.request(`/api/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    })
+  }
+
+  async markAllNotificationsAsRead() {
+    return this.request('/api/notifications/read-all', {
+      method: 'PUT',
+    })
+  }
+
+  async retryValidation(challengeId: string, validationType: 'initial' | 'post_materialization') {
+    return this.request(`/api/admin/ai/retry-validation/${challengeId}`, {
+      method: 'POST',
+      body: { validation_type: validationType },
+    })
+  }
 }
 
 export const apiClient = new ApiClient()

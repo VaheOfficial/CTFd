@@ -139,7 +139,7 @@ export default function AdminAIPage() {
   }
 
   return (
-    <div className="space-y-8 p-8">
+    <div className="space-y-8 py-8 px-24">
       <div>
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
           <Bot className="h-8 w-8 text-brand" />
@@ -205,29 +205,29 @@ export default function AdminAIPage() {
                 <Sparkles className="h-5 w-5 text-brand" />
                 Challenge Generation
               </CardTitle>
-              <CardDescription>
+              <CardDescription className='text-md'>
                 Describe the challenge you want to create. Be specific about the topic, difficulty, and learning objectives.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="prompt">Challenge Prompt</Label>
+                <Label htmlFor="prompt" className='text-lg'>Challenge Prompt</Label>
                 <Textarea
                   id="prompt"
                   placeholder="Create a network forensics challenge about analyzing PCAP files to identify malicious traffic. The challenge should focus on DNS tunneling detection and require participants to extract exfiltrated data. Include multiple artifacts and progressive hints. Target difficulty: Medium."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={6}
-                  className="resize-none"
+                  className="text-md"
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Include details about the challenge type, specific techniques to cover, artifacts needed, and target difficulty level.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Quick Templates</Label>
+                  <Label className='text-lg'>Quick Templates</Label>
                   <div className="grid gap-2">
                     <Button
                       variant="outline"
@@ -254,8 +254,8 @@ export default function AdminAIPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>AI Generation Tips</Label>
-                  <div className="text-sm text-muted-foreground space-y-1">
+                  <Label className='text-lg'>AI Generation Tips</Label>
+                  <div className="text-md text-muted-foreground space-y-1">
                     <p>• Be specific about the security domain and techniques</p>
                     <p>• Mention required artifacts (files, images, configs)</p>
                     <p>• Specify target difficulty and time estimate</p>

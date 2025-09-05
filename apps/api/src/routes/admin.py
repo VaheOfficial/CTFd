@@ -8,7 +8,7 @@ from datetime import datetime
 
 from ..database import get_db
 from ..models.user import User
-from ..models.challenge import Challenge, ChallengeStatus, Artifact, Hint, ValidatorConfig, HintConsumption
+from ..models.challenge import Challenge, ChallengeStatus, Artifact, Hint, ValidatorConfig, HintConsumption, FlagType
 from ..models.season import Season, Week
 from ..models.audit import AuditLog
 from ..models.leaderboard import LeaderboardSnapshot
@@ -129,7 +129,12 @@ async def create_challenge(
             mode=challenge_data['mode'],
             status=ChallengeStatus.READY,
             author_id=current_user.id,
-            description=challenge_data.get('description', '')
+            description=challenge_data.get('description', ''),
+            
+            # Flag configuration
+            flag_type=FlagType(challenge_data.get('flag', {}).get('type', 'dynamic_hmac')),
+            flag_format=challenge_data.get('flag', {}).get('format', 'flag{{{}}}'),
+            static_flag=challenge_data.get('flag', {}).get('static_value') if challenge_data.get('flag', {}).get('type') == 'static' else None
         )
         
         db.add(challenge)

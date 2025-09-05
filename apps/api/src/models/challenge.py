@@ -27,6 +27,12 @@ class ChallengeMode(str, Enum):
 class ChallengeStatus(str, Enum):
     DRAFT = 'DRAFT'
     READY = 'READY'
+    VALIDATION_PENDING = 'VALIDATION_PENDING'
+    VALIDATION_FAILED = 'VALIDATION_FAILED'
+    READY_FOR_MATERIALIZATION = 'READY_FOR_MATERIALIZATION'
+    MATERIALIZATION_PENDING = 'MATERIALIZATION_PENDING'
+    MATERIALIZATION_FAILED = 'MATERIALIZATION_FAILED'
+    READY_FOR_PUBLISHING = 'READY_FOR_PUBLISHING'
     PUBLISHED = 'PUBLISHED'
     ARCHIVED = 'ARCHIVED'
 
@@ -49,6 +55,10 @@ class NetworkPolicy(str, Enum):
     NONE = 'none'
     EGRESS_ONLY = 'egress_only'
 
+class FlagType(str, Enum):
+    STATIC = 'static'
+    DYNAMIC_HMAC = 'dynamic_hmac'
+
 class Challenge(Base):
     __tablename__ = "challenges"
 
@@ -65,6 +75,11 @@ class Challenge(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Flag configuration
+    flag_type = Column(ENUM(FlagType), nullable=False, default=FlagType.DYNAMIC_HMAC)
+    flag_format = Column(String(100), nullable=False, default="flag{{{}}}")
+    static_flag = Column(String(255), nullable=True)  # Only used for static flags
 
     # Relationships
     author = relationship("User", back_populates="authored_challenges")
@@ -72,6 +87,7 @@ class Challenge(Base):
     artifacts = relationship("Artifact", back_populates="challenge", cascade="all, delete-orphan")
     hints = relationship("Hint", back_populates="challenge", cascade="all, delete-orphan", order_by="Hint.order")
     validators = relationship("ValidatorConfig", back_populates="challenge", cascade="all, delete-orphan")
+    validations = relationship("ValidationResult", back_populates="challenge", cascade="all, delete-orphan")
     submissions = relationship("Submission", back_populates="challenge")
     writeups = relationship("WriteUp", back_populates="challenge")
     lab_templates = relationship("LabTemplate", back_populates="challenge", cascade="all, delete-orphan")
@@ -136,6 +152,21 @@ class ValidatorConfig(Base):
     # Relationships
     challenge = relationship("Challenge", back_populates="validators")
 
+
+class ValidationResult(Base):
+    __tablename__ = "validation_results"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    challenge_id = Column(UUID(as_uuid=True), ForeignKey("challenges.id"), nullable=False)
+    validation_type = Column(String(50), nullable=False)  # initial, post_materialization
+    status = Column(String(20), nullable=False)  # passed, failed
+    feedback = Column(Text, nullable=True)
+    score = Column(Integer, nullable=True)  # 0-100
+    details_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    challenge = relationship("Challenge", back_populates="validations")
 
 class HintConsumption(Base):
     __tablename__ = "hint_consumptions"

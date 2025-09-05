@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiClient } from './client'
+import { apiClient, ApiResponse } from './client'
 import { toast } from 'sonner'
 
 // Re-export auth hooks from the new auth module
@@ -13,6 +13,12 @@ export {
   useVerify2FACode,
   useToggle2FA
 } from '@/lib/auth/hooks'
+
+// Types
+interface RetryValidationParams {
+  challengeId: string
+  validationType: 'initial' | 'post_materialization'
+}
 
 // Query Keys
 export const queryKeys = {
@@ -222,14 +228,26 @@ export function useCreateChallenge() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: ({ challengeYaml, seasonId, weekIndex }: {
+    mutationFn: async ({ challengeYaml, seasonId, weekIndex }: {
       challengeYaml: any
       seasonId?: string
       weekIndex?: number
-    }) => apiClient.createChallenge(challengeYaml, seasonId, weekIndex),
-    onSuccess: () => {
+    }): Promise<ApiResponse<{ challenge_id: string }>> => {
+      const response = await apiClient.createChallenge(challengeYaml, seasonId, weekIndex)
+      return response as ApiResponse<{ challenge_id: string }>
+    },
+    onSuccess: (response: ApiResponse<{ challenge_id: string }>) => {
+      // Invalidate and refetch challenges immediately
       queryClient.invalidateQueries({ queryKey: queryKeys.challenges() })
       queryClient.invalidateQueries({ queryKey: queryKeys.seasons() })
+      
+      // If we have a challenge ID, also invalidate that specific challenge
+      if (response.data?.challenge_id) {
+        queryClient.invalidateQueries({ 
+          queryKey: queryKeys.challenge(response.data.challenge_id)
+        })
+      }
+      
       toast.success('Challenge created successfully')
     },
     onError: (error: any) => {
@@ -378,6 +396,23 @@ export function usePublishChallenge() {
   })
 }
 
+export function useRetryValidation() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ challengeId, validationType }: RetryValidationParams) =>
+      apiClient.retryValidation(challengeId, validationType),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.challenge(variables.challengeId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.challenges() })
+      toast.success('Validation started')
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to start validation')
+    },
+  })
+}
+
 export function useSeason(seasonId: string) {
   return useQuery({
     queryKey: queryKeys.season(seasonId),
@@ -445,17 +480,59 @@ export function useSeasonWeeks(seasonId: string) {
 }
 
 // Missing hooks
+interface ChallengeResponse extends Array<{
+  id: string;
+  slug: string;
+  title: string;
+  track: string;
+  difficulty: string;
+  points_base: number;
+  time_cap_minutes: number;
+  mode: string;
+  description: string;
+  artifacts: Array<{
+    id: string;
+    filename: string;
+    kind: string;
+    size_bytes: number;
+  }>;
+  hints: Array<{
+    order: number;
+    cost_percent: number;
+    available: boolean;
+  }>;
+  has_lab: boolean;
+}> {}
+
 export function useChallenges() {
+  const queryClient = useQueryClient()
+  
   return useQuery({
     queryKey: queryKeys.challenges(),
     queryFn: async () => {
       const response = await apiClient.getChallenges()
+
       if (response.error) {
         throw new Error(response.error.message)
       }
-      return response.data
+      
+      // If we have data, update individual challenge queries
+      if ((response.data as ChallengeResponse)) {
+        const data = response.data as ChallengeResponse
+        data.forEach(({ id }) => {
+          queryClient.setQueryData(
+            queryKeys.challenge(id),
+            data.find((c: any) => c.id === id)
+          )
+        })
+        return data
+      }
+      
+      return []
     },
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 2 * 60 * 1000, // 2 minutes,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true
   })
 }
 

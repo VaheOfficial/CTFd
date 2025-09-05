@@ -12,7 +12,8 @@ import {
   FileText, 
   Bot,
   Settings,
-  Activity
+  Activity,
+  Bell
 } from 'lucide-react'
 import Link from 'next/link'
 import { useAppSelector } from '@/lib/redux/hooks'
@@ -21,7 +22,7 @@ export default function AdminPage() {
   const admin = useAppSelector((s) => s.stats.admin)
 
   return (
-    <div className="space-y-10 p-8">
+    <div className="space-y-10 py-8 px-24">
       <div className="space-y-4">
         <h1 className="text-4xl font-bold tracking-tight flex items-center gap-4">
           <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/20 shadow-lg">
@@ -99,7 +100,7 @@ export default function AdminPage() {
 
       {/* Quick Actions */}
       <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/20">
@@ -111,19 +112,21 @@ export default function AdminPage() {
               Generate new challenges using AI
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="flex-1 flex flex-col justify-between">
             <div className="text-base text-muted-foreground">
               <p>Today: {admin.ai_generations_today} challenges generated</p>
             </div>
-            <Link href="/admin/ai">
-              <Button size="lg" className="w-full">
-                Generate Challenge
-              </Button>
-            </Link>
+            <div className="pt-6">
+              <Link href="/admin/ai">
+                <Button size="lg" className="w-full">
+                  Generate Challenge
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-secondary/20 via-secondary/15 to-secondary/10 border border-secondary/20">
@@ -135,20 +138,22 @@ export default function AdminPage() {
               Create and manage seasons
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="flex-1 flex flex-col justify-between">
             <div className="text-base text-muted-foreground space-y-1">
               <p>Current: Winter DCO Challenge</p>
               <p>Week 3 of 8 • 5 challenges this week</p>
             </div>
-            <Link href="/admin/seasons">
-              <Button variant="outline" size="lg" className="w-full">
-                Manage Seasons
-              </Button>
-            </Link>
+            <div className="pt-6">
+              <Link href="/admin/seasons">
+                <Button variant="outline" size="lg" className="w-full">
+                  Manage Seasons
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-accent/20 via-accent/15 to-accent/10 border border-accent/20">
@@ -160,7 +165,7 @@ export default function AdminPage() {
               Browse and manage challenges
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="flex-1 flex flex-col justify-between">
             <div className="text-base text-muted-foreground space-y-2">
               <p>{admin.total_challenges} total challenges</p>
               <div className="flex gap-2">
@@ -168,15 +173,17 @@ export default function AdminPage() {
                 <Badge variant="warning">Draft: 3</Badge>
               </div>
             </div>
-            <Link href="/admin/challenges">
-              <Button variant="outline" size="lg" className="w-full">
-                Manage Challenges
-              </Button>
-            </Link>
+            <div className="pt-6">
+              <Link href="/admin/challenges">
+                <Button variant="outline" size="lg" className="w-full">
+                  Manage Challenges
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-secondary/20 via-secondary/15 to-secondary/10 border border-secondary/20">
@@ -188,20 +195,22 @@ export default function AdminPage() {
               Manage users and permissions
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="flex-1 flex flex-col justify-between">
             <div className="text-base text-muted-foreground space-y-1">
               <p>{admin.total_users.toLocaleString()} registered users</p>
               <p>43 active this week</p>
             </div>
-            <Link href="/admin/users">
-              <Button variant="outline" size="lg" className="w-full">
-                Manage Users
-              </Button>
-            </Link>
+            <div className="pt-6">
+              <Link href="/admin/users">
+                <Button variant="outline" size="lg" className="w-full">
+                  Manage Users
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-warning/20 via-warning/15 to-warning/10 border border-warning/20">
@@ -213,20 +222,22 @@ export default function AdminPage() {
               Review system activity
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="flex-1 flex flex-col justify-between">
             <div className="text-base text-muted-foreground space-y-1">
               <p>247 events today</p>
               <p>Last: Challenge published (2 min ago)</p>
             </div>
-            <Link href="/admin/audit">
-              <Button variant="outline" size="lg" className="w-full">
-                View Audit Log
-              </Button>
-            </Link>
+            <div className="pt-6">
+              <Link href="/admin/audit">
+                <Button variant="outline" size="lg" className="w-full">
+                  View Audit Log
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/20">
@@ -238,14 +249,43 @@ export default function AdminPage() {
               Configure platform settings
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="flex-1 flex flex-col justify-between">
             <div className="text-base text-muted-foreground space-y-1">
               <p>Email: Enabled</p>
               <p>Labs: 3 templates active</p>
             </div>
-            <Button variant="outline" size="lg" className="w-full">
-              System Settings
-            </Button>
+            <div className="pt-6">
+              <Button variant="outline" size="lg" className="w-full">
+                System Settings
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-accent/20 via-accent/15 to-accent/10 border border-accent/20">
+                <Bell className="h-6 w-6 text-accent" />
+              </div>
+              <span className="text-xl">Notifications</span>
+            </CardTitle>
+            <CardDescription className="text-base">
+              Send notifications to users
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col justify-between">
+            <div className="text-base text-muted-foreground space-y-1">
+              <p>Send announcements and updates</p>
+              <p>Target specific users or all users</p>
+            </div>
+            <div className="pt-6">
+              <Link href="/admin/notifications">
+                <Button variant="outline" size="lg" className="w-full">
+                  Send Notification
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

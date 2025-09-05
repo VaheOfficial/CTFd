@@ -16,12 +16,15 @@ class LLMRouter:
     def __init__(self):
         self.providers: Dict[str, LLMProvider] = {}
         self._initialize_providers()
+        logger.info(f"Providers: {self.providers}")
     
     def _initialize_providers(self):
         """Initialize available providers from environment"""
         
         # OpenAI GPT-5
-        if openai_key := os.getenv("OPENAI_API_KEY"):
+        openai_key = os.getenv("OPENAI_API_KEY")
+        logger.info(f"OpenAI API key found: {bool(openai_key)}")
+        if openai_key:
             try:
                 self.providers["gpt5"] = OpenAIGPT5Provider(
                     api_key=openai_key,
@@ -30,18 +33,19 @@ class LLMRouter:
                 logger.info("GPT-5 provider initialized")
             except Exception as e:
                 logger.error("Failed to initialize GPT-5 provider", error=str(e))
+        else:
+            logger.warning("OPENAI_API_KEY not found in environment")
         
         # Anthropic Claude
-        if anthropic_key := os.getenv("ANTHROPIC_API_KEY"):
-            try:
-                self.providers["claude"] = AnthropicClaudeProvider(api_key=anthropic_key)
-                logger.info("Claude provider initialized")
-            except Exception as e:
-                logger.error("Failed to initialize Claude provider", error=str(e))
+        # if anthropic_key := os.getenv("ANTHROPIC_API_KEY"):
+        #     try:
+        #         self.providers["claude"] = AnthropicClaudeProvider(api_key=anthropic_key)
+        #         logger.info("Claude provider initialized")
+        #     except Exception as e:
+        #         logger.error("Failed to initialize Claude provider", error=str(e))
         
         if not self.providers:
             logger.warning("No LLM providers configured")
-    
     async def generate_json(
         self, 
         prompt: str, 

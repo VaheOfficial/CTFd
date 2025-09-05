@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 import hmac
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ..database import get_db
 from ..models.user import User
-from ..models.challenge import Challenge, ChallengeInstance, Hint, ValidatorConfig, HintConsumption
+from ..models.challenge import Challenge, ChallengeInstance, Hint, ValidatorConfig, HintConsumption, FlagType
 from ..models.season import WeekChallenge, Week
 from ..models.submission import Submission
 from ..utils.auth import get_current_user
@@ -39,7 +39,7 @@ _hint_rate_limit = {}
 
 def check_submission_rate_limit(user_id: str, challenge_id: str) -> bool:
     """Check if user can submit (1 per 10 seconds per challenge)"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     user_limits = _submission_rate_limit.setdefault(user_id, {})
     challenge_submissions = user_limits.setdefault(challenge_id, [])
     
@@ -54,7 +54,7 @@ def check_submission_rate_limit(user_id: str, challenge_id: str) -> bool:
 
 def check_bad_submission_limit(user_id: str, challenge_id: str, db: Session) -> bool:
     """Check if user has exceeded bad submission limit (10 bad per minute)"""
-    one_minute_ago = datetime.utcnow() - timedelta(minutes=1)
+    one_minute_ago = datetime.now(timezone.utc) - timedelta(minutes=1)
     
     bad_submissions = db.query(Submission).filter(
         Submission.user_id == user_id,
@@ -82,7 +82,7 @@ async def submit_flag(
     ).first()
     if mapping:
         _, wk = mapping
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if not (wk.opens_at <= now <= wk.closes_at):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Challenge not available")
     if not challenge:
@@ -132,19 +132,32 @@ async def submit_flag(
     validation_details = ""
     
     try:
-        # Check flag type from challenge metadata (stored in description or separate field)
-        # For now, assume dynamic_hmac by default
-        if challenge_instance:
+        print(f"challenge.flag_type: {challenge.flag_type}")
+        # Check flag type from challenge configuration
+        if challenge.flag_type == FlagType.DYNAMIC_HMAC and challenge_instance:
             # Dynamic HMAC flag
             is_correct = verify_hmac_flag(
                 submitted_flag=request.flag,
                 user_id=str(current_user.id),
                 challenge_id=challenge_id,
-                dynamic_seed=challenge_instance.dynamic_seed
+                dynamic_seed=challenge_instance.dynamic_seed,
+                format_string=challenge.flag_format
             )
             validation_details = "HMAC validation"
+        elif challenge.flag_type == FlagType.STATIC:
+            # Static flag validation
+            if not challenge.static_flag:
+                logger.error("Static flag not configured",
+                           challenge_id=challenge_id)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Challenge validation not properly configured"
+                )
+            
+            is_correct = verify_static_flag(request.flag, challenge.static_flag)
+            validation_details = "Static flag validation"
         else:
-            # Check for validator
+            # Check for custom validator
             validator = db.query(ValidatorConfig).filter(
                 ValidatorConfig.challenge_id == challenge_id
             ).first()
@@ -165,7 +178,8 @@ async def submit_flag(
                         "flag": request.flag,
                         "user_id": str(current_user.id),
                         "challenge_id": challenge_id,
-                        "dynamic_seed": challenge_instance.dynamic_seed if challenge_instance else ""
+                        "dynamic_seed": challenge_instance.dynamic_seed if challenge_instance else "",
+                        "flag_format": challenge.flag_format
                     }
                 )
                 
@@ -176,10 +190,12 @@ async def submit_flag(
                 is_correct = validator_result.get("ok", False)
                 validation_details = validator_result.get("details", "Validator check")
             else:
-                # Static flag (fallback)
-                # This would need the expected flag stored somewhere
-                is_correct = False  # Placeholder
-                validation_details = "Static flag check"
+                logger.error("No valid flag validation method configured",
+                           challenge_id=challenge_id)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Challenge validation not properly configured"
+                )
     
     except Exception as e:
         logger.error("Flag validation failed", 

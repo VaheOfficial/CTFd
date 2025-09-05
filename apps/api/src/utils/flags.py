@@ -38,5 +38,6 @@ def verify_hmac_flag(
     return hmac.compare_digest(submitted_flag, expected_flag)
 
 def verify_static_flag(submitted_flag: str, expected_flag: str) -> bool:
+    print(f"submitted_flag: {submitted_flag}, expected_flag: {expected_flag}")
     """Verify a static flag"""
     return hmac.compare_digest(submitted_flag.strip(), expected_flag.strip())
