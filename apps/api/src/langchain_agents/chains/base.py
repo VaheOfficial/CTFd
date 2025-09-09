@@ -1,22 +1,22 @@
 """
 Base chain implementation for CTF challenge generation.
 """
+from pydantic import BaseModel, ConfigDict
 from typing import Dict, Any, List, Optional
-from langchain.chains import Chain
+import asyncio
+from langchain.schema.runnable import Runnable
 from langchain.schema import BaseMemory
-from pydantic import BaseModel
 
 from ..config import ChainType, LangChainConfig
 
-class BaseGenerationChain(Chain, BaseModel):
+class BaseGenerationChain(BaseModel, Runnable):
     """Base chain for challenge generation process"""
     
     chain_type: ChainType
     config: LangChainConfig
     memory: Optional[BaseMemory] = None
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     @property
     def input_keys(self) -> List[str]:
@@ -41,3 +41,16 @@ class BaseGenerationChain(Chain, BaseModel):
     async def _acall(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Async execution of the chain"""
         raise NotImplementedError
+
+    async def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Convenience async runner that wraps inputs under the required 'input' key."""
+        wrapped_inputs = {"input": inputs}
+        return await self._acall(wrapped_inputs)
+
+    # Runnable interface
+    async def ainvoke(self, input: Dict[str, Any], config: Any = None, **kwargs: Any) -> Dict[str, Any]:
+        payload = input if "input" in input else {"input": input}
+        return await self._acall(payload)
+
+    def invoke(self, input: Dict[str, Any], config: Any = None, **kwargs: Any) -> Dict[str, Any]:
+        return asyncio.run(self.ainvoke(input, config=config, **kwargs))

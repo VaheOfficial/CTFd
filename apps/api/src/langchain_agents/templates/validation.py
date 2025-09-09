@@ -29,12 +29,16 @@ Challenge Implementation:
 Expected Solution Path:
 {solution_path}
 
-Please verify:
-1. Challenge functionality
-2. Solution path validity
-3. Difficulty calibration
-4. Security boundaries
-5. Resource requirements"""
+Output STRICT JSON with keys:
+{{
+  "is_valid": bool,
+  "issues": [str],
+  "unintended_paths": [str],
+  "difficulty_assessed": str,
+  "resource_usage_notes": str,
+  "recommendations": [str]
+}}
+Do not include markdown fences or commentary outside JSON."""
 
 validation_template = ChatPromptTemplate.from_messages([
     SystemMessagePromptTemplate.from_template(VALIDATION_SYSTEM),

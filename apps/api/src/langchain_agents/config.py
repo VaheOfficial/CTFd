@@ -4,6 +4,7 @@ Configuration for LangChain-based CTF challenge generation system.
 from enum import Enum
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
+from langchain_openai import ChatOpenAI
 
 class AgentType(str, Enum):
     CHALLENGE_DESIGNER = "challenge_designer"
@@ -23,17 +24,19 @@ class LangChainConfig(BaseModel):
     """Configuration for LangChain agents and chains"""
     
     # Model configurations
-    model_configs: Dict[str, Dict[str, Any]] = Field(
+    configs: Dict[str, Dict[str, Any]] = Field(
         default_factory=lambda: {
+            "gpt-5": {
+                "temperature": 1,
+                "model": "gpt-5"
+            },
             "gpt-4": {
-                "temperature": 0.1,
-                "max_tokens": 4000,
-                "model_name": "gpt-4"
+                "temperature": 1,
+                "model": "gpt-4"
             },
             "claude-3-opus": {
-                "temperature": 0.1,
-                "max_tokens": 4000,
-                "model_name": "claude-3-opus"
+                "temperature": 1,
+                "model": "claude-3-opus"
             }
         }
     )
@@ -41,9 +44,8 @@ class LangChainConfig(BaseModel):
     # Default agent settings
     default_agent_settings: Dict[str, Any] = Field(
         default_factory=lambda: {
-            "temperature": 0.1,
-            "max_tokens": 4000,
-            "model_name": "gpt-4"
+            "temperature": 1,
+            "model": "gpt-5"
         }
     )
     
@@ -99,3 +101,11 @@ class LangChainConfig(BaseModel):
     
     class Config:
         arbitrary_types_allowed = True
+
+    def get_llm(self):
+        """Return a default ChatOpenAI client using default agent settings.
+        Adapts token parameter naming for models using the Responses API.
+        """
+        settings = dict(self.default_agent_settings)
+        # Use Chat Completions-compatible parameter naming
+        return ChatOpenAI(**settings)

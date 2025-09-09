@@ -18,6 +18,7 @@ class CodeGeneratorAgent(BaseAgent):
             agent_type=AgentType.CODE_GENERATOR,
             config=config
         )
+        object.__setattr__(self, 'llm', config.get_llm())
     
     def get_tools(self) -> List[Tool]:
         """Get tools available to the code generator"""

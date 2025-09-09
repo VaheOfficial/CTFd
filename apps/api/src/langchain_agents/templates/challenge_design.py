@@ -40,12 +40,16 @@ Prompt: {prompt}
 Track: {track}
 Difficulty: {difficulty}
 
-Please provide a complete challenge design including:
-1. Challenge title and description
-2. Learning objectives
-3. Required infrastructure
-4. Solution path
-5. Validation criteria"""
+Output STRICT JSON with keys:
+{{
+  "title": str,
+  "description": str,
+  "learning_objectives": [str],
+  "infrastructure_requirements": {{"docker": bool, "kasm": bool, "rdp_windows": bool, "network": {{"ports": [int], "isolation": str}}}},
+  "solution_path": [{{"step": int, "action": str, "notes": str}}],
+  "validation_criteria": [str]
+}}
+Do not include markdown fences or commentary outside JSON."""
 
 challenge_design_template = ChatPromptTemplate.from_messages([
     SystemMessagePromptTemplate.from_template(CHALLENGE_DESIGN_SYSTEM),

@@ -30,22 +30,22 @@ app = FastAPI(
 security = HTTPBearer()
 
 # Request logging middleware
-@app.middleware("http")
-async def log_requests(request, call_next):
-    logger = get_logger(__name__)
-    logger.info(f"Request: {request.method} {request.url.path}",
-                headers=dict(request.headers),
-                query_params=dict(request.query_params))
+# @app.middleware("http")
+# async def log_requests(request, call_next):
+#     logger = get_logger(__name__)
+#     logger.info(f"Request: {request.method} {request.url.path}",
+#                 headers=dict(request.headers),
+#                 query_params=dict(request.query_params))
     
-    # Try to log the body if it's JSON
-    try:
-        body = await request.json()
-        logger.info("Request body:", body=body)
-    except:
-        pass
+#     # Try to log the body if it's JSON
+#     try:
+#         body = await request.json()
+#         logger.info("Request body:", body=body)
+#     except:
+#         pass
     
-    response = await call_next(request)
-    return response
+#     response = await call_next(request)
+#     return response
 
 # CORS middleware
 app.add_middleware(

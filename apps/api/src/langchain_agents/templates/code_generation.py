@@ -25,12 +25,15 @@ CODE_GENERATION_HUMAN = """Implement the core functionality for the following CT
 Challenge Design:
 {challenge_design}
 
-Please provide:
-1. Main application code
-2. Supporting files and configurations
-3. Deployment instructions
-4. Infrastructure requirements
-5. Testing procedures"""
+Output STRICT JSON with keys:
+{{
+  "files": [ {{"path": "relative/path", "content": "file content (escape as needed)"}} ],
+  "infrastructure_requirements": {{"docker": bool, "kasm": bool, "rdp_windows": bool, "network": {{"ports": [int], "isolation": str}}}},
+  "deployment": {{"instructions": [str], "dockerfile_path": str, "compose_path": str}},
+  "testing_procedures": [str],
+  "flag": {{"format": "CTF{{...}}", "placement": "where/how the flag is embedded"}}
+}}
+Do not include markdown fences or commentary outside JSON."""
 
 code_generation_template = ChatPromptTemplate.from_messages([
     SystemMessagePromptTemplate.from_template(CODE_GENERATION_SYSTEM),

@@ -83,7 +83,7 @@ class GeneratedChallenge(BaseModel):
 class GenerateChallengeResponse(BaseModel):
     challenge_id: str
     generation_id: str
-    generated_json: GeneratedChallenge
+    generated_json: Dict[str, Any]
     provider: str
     model: str
     tokens_used: Optional[int] = None

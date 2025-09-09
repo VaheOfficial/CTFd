@@ -27,5 +27,9 @@ PyJWT==2.8.0
 prometheus-client==0.19.0
 structlog==23.2.0
 openai==1.6.1
-anthropic==0.8.1
+anthropic
 pydantic[email]==2.5.0
+langchain
+langchain-openai
+langchain-anthropic
+kubernetes>=28.1.0
