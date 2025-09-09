@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 import os
 import secrets
 import pyotp
+from ..utils.logging import get_logger
 
 from ..database import get_db
 from ..models.user import User
+from ..schemas.user import UserBase
 
 # Security configuration
 SECRET_KEY = os.getenv("JWT_SECRET", "change_me_jwt_secret_123456789")
@@ -69,7 +71,10 @@ def get_current_user(
     db: Session = Depends(get_db)
 ) -> User:
     """Get the current authenticated user"""
+    logger = get_logger(__name__)
+    logger.info("Starting get_current_user")
     payload = verify_token(credentials.credentials)
+    logger.info("Token verified", payload=payload)
     
     if payload.get("type") != "access":
         raise HTTPException(
@@ -78,8 +83,7 @@ def get_current_user(
         )
     
     user_id: str = payload.get("sub")
-    print(f"JWT payload received: {payload}")
-    print(f"Extracted user_id: '{user_id}' (type: {type(user_id)})")
+    logger.info("User ID extracted from JWT", user_id=user_id)
     
     if user_id is None:
         raise HTTPException(
@@ -88,6 +92,7 @@ def get_current_user(
         )
     
     user = db.query(User).filter(User.id == user_id).first()
+    logger.info("User query completed", user_id=user_id, found=user is not None)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -105,14 +110,16 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
         )
     return current_user
 
-def require_author(current_user: User = Depends(get_current_user)) -> User:
+def require_author(current_user: User = Depends(get_current_user)) -> UserBase:
     """Require author role or above"""
+    logger = get_logger(__name__)
+    logger.info("Checking author role", user_id=current_user.id, role=current_user.role)
     if current_user.role not in ["ADMIN", "AUTHOR"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Author access required"
         )
-    return current_user
+    return UserBase.model_validate(current_user)
 
 def generate_totp_secret() -> str:
     """Generate a TOTP secret"""

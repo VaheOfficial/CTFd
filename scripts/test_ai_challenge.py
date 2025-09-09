@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 class AIChallengeTester:
     def __init__(self, api_url="http://localhost:8000", api_key=None):
-        self.api_url = api_url
+        self.api_url = api_url.rstrip('/')  # Remove trailing slash if present
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
@@ -24,17 +24,17 @@ class AIChallengeTester:
         """Generate a challenge using AI"""
         print("\n🤖 Generating challenge using AI...")
         
+        # Prepare request payload according to API schema
         payload = {
             "prompt": prompt,
-            "preferred_provider": "auto"
+            "preferred_provider": "auto",
+            "track": track,
+            "difficulty": difficulty,
+            "seed": None  # Optional, can be set if deterministic generation is needed
         }
-        if track:
-            payload["track"] = track
-        if difficulty:
-            payload["difficulty"] = difficulty
 
         response = requests.post(
-            f"{self.api_url}/admin/ai/generate-challenge",
+            f"{self.api_url}/api/admin/ai/generate",
             headers=self.headers,
             json=payload
         )
@@ -61,7 +61,7 @@ class AIChallengeTester:
         
         while time.time() - start_time < timeout:
             response = requests.get(
-                f"{self.api_url}/admin/challenges/{self.challenge_id}",
+                f"{self.api_url}/api/admin/challenges/{self.challenge_id}",
                 headers=self.headers
             )
             response.raise_for_status()
@@ -88,7 +88,7 @@ class AIChallengeTester:
         print("\n🏗️ Materializing challenge artifacts...")
         
         response = requests.post(
-            f"{self.api_url}/admin/ai/materialize/{self.challenge_id}",
+            f"{self.api_url}/api/admin/ai/materialize/{self.challenge_id}",
             headers=self.headers,
             json={}
         )
@@ -98,7 +98,7 @@ class AIChallengeTester:
         start_time = time.time()
         while time.time() - start_time < timeout:
             response = requests.get(
-                f"{self.api_url}/admin/challenges/{self.challenge_id}",
+                f"{self.api_url}/api/admin/challenges/{self.challenge_id}",
                 headers=self.headers
             )
             response.raise_for_status()
@@ -122,7 +122,7 @@ class AIChallengeTester:
         print("\n📢 Publishing challenge...")
         
         response = requests.post(
-            f"{self.api_url}/admin/ai/publish/{self.challenge_id}",
+            f"{self.api_url}/api/admin/ai/publish/{self.challenge_id}",
             headers=self.headers,
             json={}
         )
@@ -135,7 +135,7 @@ class AIChallengeTester:
         print("\n🚀 Creating challenge instance...")
         
         response = requests.post(
-            f"{self.api_url}/challenges/{self.challenge_id}/instances",
+            f"{self.api_url}/api/challenges/{self.challenge_id}/instance",
             headers=self.headers,
             json={}
         )
@@ -151,7 +151,7 @@ class AIChallengeTester:
     def get_challenge_info(self):
         """Get challenge information"""
         response = requests.get(
-            f"{self.api_url}/admin/challenges/{self.challenge_id}",
+            f"{self.api_url}/api/admin/challenges/{self.challenge_id}",
             headers=self.headers
         )
         response.raise_for_status()

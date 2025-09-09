@@ -5,8 +5,9 @@ from fastapi.security import HTTPBearer
 import os
 
 from src.database import engine, Base
-from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, admin_ai, two_factor, notifications
+from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, ai_challenge, two_factor, notifications
 from src.utils.logging import setup_logging
+from src.utils.logging import get_logger
 
 # Setup logging
 setup_logging()
@@ -21,11 +22,30 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    openapi_url="/api/openapi.json",
+    debug=True  # Enable debug mode
 )
 
 # Security middleware
 security = HTTPBearer()
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger = get_logger(__name__)
+    logger.info(f"Request: {request.method} {request.url.path}",
+                headers=dict(request.headers),
+                query_params=dict(request.query_params))
+    
+    # Try to log the body if it's JSON
+    try:
+        body = await request.json()
+        logger.info("Request body:", body=body)
+    except:
+        pass
+    
+    response = await call_next(request)
+    return response
 
 # CORS middleware
 app.add_middleware(
@@ -52,7 +72,7 @@ app.include_router(submissions.router, prefix="/api", tags=["Submissions"])
 app.include_router(artifacts.router, prefix="/api", tags=["Artifacts"])
 app.include_router(leaderboard.router, prefix="/api", tags=["Leaderboard"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
-app.include_router(admin_ai.router, prefix="/api/admin/ai", tags=["AI Generation"])
+app.include_router(ai_challenge.router, prefix="/api", tags=["AI Generation"])
 app.include_router(notifications.router, prefix="/api", tags=["Notifications"])
 
 @app.get("/api/health")

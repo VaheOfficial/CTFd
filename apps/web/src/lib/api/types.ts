@@ -472,7 +472,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/ai/generate-challenge": {
+    "/api/admin/ai/generate": {
         parameters: {
             query?: never;
             header?: never;

@@ -353,7 +353,7 @@ export function useDisableTotp() {
 export function useGenerateChallenge() {
   return useMutation({
     mutationFn: ({ prompt }: { prompt: string }) =>
-      apiClient.generateChallenge(prompt),
+      apiClient.generateChallenge({ prompt }),
     onSuccess: () => {
       toast.success('Challenge generated successfully')
     },

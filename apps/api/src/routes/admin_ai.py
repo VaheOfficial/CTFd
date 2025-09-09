@@ -52,12 +52,12 @@ class RetryValidationRequest(BaseModel):
 
 def rate_limit_ai_generation(max_per_minute: int = 5):
     def decorator(func):
-        async def wrapper(*args, **kwargs):
+        async def wrapper(request: GenerateChallengeRequest, current_user: User, db: Session) -> GenerateChallengeResponse:
+            logger.info("Rate limiting check starting")
             try:
                 import os
                 import redis
-                user = kwargs.get('current_user')
-                user_id = str(getattr(user, 'id', 'anon'))
+                user_id = str(current_user.id)
                 r = redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
                 key = f"ai_rate:{user_id}"
                 count = r.incr(key)
@@ -65,9 +65,11 @@ def rate_limit_ai_generation(max_per_minute: int = 5):
                     r.expire(key, 60)
                 if count > max_per_minute:
                     raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
-            except Exception:
+                logger.info("Rate limiting check passed")
+            except Exception as e:
+                logger.warning("Rate limiting check failed", error=str(e))
                 pass
-            return await func(*args, **kwargs)
+            return await func(request, current_user, db)
         return wrapper
     return decorator
 
@@ -95,14 +97,21 @@ def validate_prompt_safety(prompt: str) -> bool:
     
     return True
 
-@router.post("/generate-challenge", response_model=GenerateChallengeResponse)
-@rate_limit_ai_generation(max_per_minute=5)
+@router.post("/generate", response_model=GenerateChallengeResponse)
 async def generate_challenge(
     request: GenerateChallengeRequest,
+    _: None = Depends(rate_limit_ai_generation(max_per_minute = 5)),
     current_user: User = Depends(require_author),
     db: Session = Depends(get_db)
-):
+) -> GenerateChallengeResponse:
+    logger.info("Entering generate_challenge endpoint")
     """Generate a challenge using AI"""
+    logger.info("Generating challenge", 
+                prompt=request.prompt,
+                provider=request.preferred_provider,
+                track=request.track,
+                difficulty=request.difficulty,
+                seed=request.seed)
     
     # Check if LLM is configured
     if not llm_router.is_configured():

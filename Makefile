@@ -24,6 +24,7 @@ help:
 	@echo "  make install-js   - Install JavaScript dependencies only"
 	@echo "  make install-python - Install Python dependencies in virtual environments"
 	@echo "  make clean-venv   - Remove Python virtual environments"
+	@echo "  make install-python-langchain - Install Python dependencies for LangChain"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make backup       - Backup database and artifacts"
@@ -92,7 +93,7 @@ endif
 	@echo "Database restored"
 
 # Install dependencies
-install: install-js install-python
+install: install-js install-python install-python-langchain
 
 install-js:
 	pnpm install
@@ -101,6 +102,10 @@ install-python: venv-api venv-worker
 	@echo "Installing Python dependencies in virtual environments..."
 	cd apps/api && . venv/bin/activate && pip install -r requirements.txt
 	cd apps/worker && . venv/bin/activate && pip install -r requirements.txt
+
+install-python-langchain:
+	@echo "Installing Python dependencies for LangChain..."
+	cd apps/api && . venv/bin/activate && pip install -r src/langchain_agents/requirements.txt
 
 # Create virtual environments
 venv-api:

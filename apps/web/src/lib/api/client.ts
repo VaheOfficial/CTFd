@@ -321,11 +321,17 @@ class ApiClient {
   }
 
   // AI Generation
-  async generateChallenge(prompt: string) {
-    type GenerateResponse = paths['/api/admin/ai/generate-challenge']['post']['responses']['200']['content']['application/json']
-    return this.request<GenerateResponse>('/api/admin/ai/generate-challenge', {
+  async generateChallenge(params: {
+    prompt: string;
+    preferred_provider?: 'gpt5' | 'claude' | 'auto';
+    difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'INSANE';
+    track?: 'INTEL_RECON' | 'ACCESS_EXPLOIT' | 'IDENTITY_CLOUD' | 'C2_EGRESS' | 'DETECT_FORENSICS';
+    seed?: number;
+  }) {
+    type GenerateResponse = paths['/api/admin/ai/generate']['post']['responses']['200']['content']['application/json']
+    return this.request<GenerateResponse>('/api/admin/ai/generate', {
       method: 'POST',
-      body: { prompt },
+      body: params,
     })
   }
 
