@@ -14,9 +14,9 @@ from ..schemas.ai_challenge import (
     GeneratedChallenge,
     LLMProvider
 )
-from ..langchain_agents.orchestrator import GenerationOrchestrator
-from ..langchain_agents.config import LangChainConfig
+from ..agents import ChallengeAgent, AgentConfig
 from ..utils.logging import get_logger
+from .challenge_materializer import ChallengeMaterializer
 
 logger = get_logger(__name__)
 
@@ -24,8 +24,8 @@ class AIGenerationService:
     def __init__(self, db: Session):
         self.db = db
         self.logger = get_logger(__name__)
-        self.config = LangChainConfig()
-        self.orchestrator = GenerationOrchestrator(config=self.config)
+        self.config = AgentConfig()
+        self.agent = ChallengeAgent(config=self.config)
 
     async def generate_challenge(
         self,
@@ -45,27 +45,45 @@ class AIGenerationService:
         )
 
         try:
-            # Generate challenge using LangChain orchestrator
-            self.logger.info("Starting challenge generation with LangChain", provider=request.preferred_provider)
+            # Generate challenge using new agent system
+            self.logger.info("Starting challenge generation with ChallengeAgent", provider=request.preferred_provider)
             
             # Run the generation pipeline
-            result = await self.orchestrator.generate_challenge(request)
+            result = await self.agent.generate_challenge(request)
             
-            # Create challenge record
-            challenge_id = str(uuid.uuid4())
+            # Create challenge record first
+            challenge_id = result.challenge_id  # Use the agent's challenge ID
             challenge = Challenge(
                 id=challenge_id,
-                slug=result.generated_json['id'],
-                title=result.generated_json['title'],
-                track=result.generated_json['track'],
-                difficulty=result.generated_json['difficulty'],
-                points_base=result.generated_json['points'],
-                time_cap_minutes=result.generated_json['time_cap_minutes'],
-                mode=result.generated_json['mode'],
-                status=ChallengeStatus.VALIDATION_PENDING,
+                slug=f"challenge-{challenge_id[:8]}",
+                title=result.generated_json.get('title', 'Generated Challenge'),
+                track=request.track,
+                difficulty=request.difficulty,
+                points_base=self._calculate_points(request.difficulty),
+                time_cap_minutes=self._calculate_time_cap(request.difficulty),
+                mode="standard",
+                status=ChallengeStatus.DRAFT,  # Will be updated to PUBLISHED after materialization
                 author_id=user.id,
                 description=result.generated_json.get('description', '')
             )
+            self.db.add(challenge)
+            self.db.flush()  # Get the challenge in DB before materialization
+            
+            # Materialize the challenge into database and storage
+            materializer = ChallengeMaterializer(self.db)
+            workspace_dir = result.generated_json.get("workspace_dir")
+            
+            if workspace_dir:
+                logger.info(f"Materializing challenge from workspace: {workspace_dir}")
+                materialization = await materializer.materialize_challenge(
+                    challenge_id, 
+                    workspace_dir, 
+                    result.generated_json
+                )
+                logger.info(f"Materialization complete: {materialization}")
+                
+                # Add materialization info to result
+                result.generated_json["materialization"] = materialization
 
             # Create generation plan
             generation_plan = GenerationPlan(
@@ -76,9 +94,9 @@ class AIGenerationService:
                 model=result.model,
                 seed=request.seed,
                 generated_json=result.generated_json,
-                artifacts_plan=result.generated_json.get('artifacts_plan', []),
-                prompt_tokens=result.tokens_used,  # We'll need to track these in the orchestrator
-                completion_tokens=None,  # We'll need to track these in the orchestrator
+                artifacts_plan=[],  # Agent creates files directly in workspace
+                prompt_tokens=result.tokens_used,
+                completion_tokens=None,
                 total_tokens=result.tokens_used,
                 cost_usd=result.cost_usd,
                 status=GenerationStatus.DRAFT
@@ -113,3 +131,23 @@ class AIGenerationService:
             )
             self.db.rollback()
             raise
+
+    def _calculate_points(self, difficulty) -> int:
+        """Calculate base points for a challenge based on difficulty."""
+        points_map = {
+            "EASY": 100,
+            "MEDIUM": 250, 
+            "HARD": 500,
+            "INSANE": 1000
+        }
+        return points_map.get(str(difficulty), 100)
+    
+    def _calculate_time_cap(self, difficulty) -> int:
+        """Calculate time cap in minutes based on difficulty."""
+        time_map = {
+            "EASY": 30,
+            "MEDIUM": 60,
+            "HARD": 120, 
+            "INSANE": 240
+        }
+        return time_map.get(str(difficulty), 30)

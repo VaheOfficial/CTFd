@@ -9,6 +9,7 @@ from ..database import get_db
 from ..models.user import User, UserRole
 from ..models.two_factor import TwoFactorSettings, TwoFactorCode
 from ..services.email_service import email_service
+from ..utils.audit import log_audit
 from ..utils.auth import (
     verify_password, 
     get_password_hash, 
@@ -71,6 +72,15 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Audit: user created
+    log_audit(
+        db,
+        action="user_signed_up",
+        entity_type="user",
+        entity_id=str(user.id),
+        actor_user_id=str(user.id),
+    )
     
     # Create tokens
     access_token = create_access_token(data={"sub": str(user.id)})
@@ -159,6 +169,15 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
                     detail="Failed to send verification code"
                 )
             
+            # Audit: 2FA required
+            log_audit(
+                db,
+                action="user_login_2fa_required",
+                entity_type="user",
+                entity_id=str(user.id),
+                actor_user_id=str(user.id),
+            )
+
             # User needs to provide 2FA code
             raise HTTPException(
                 status_code=status.HTTP_202_ACCEPTED,
@@ -176,6 +195,13 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         if not code_record or not code_record.is_valid():
             two_factor_settings.increment_failed_attempts()
             db.commit()
+            log_audit(
+                db,
+                action="user_login_2fa_failed",
+                entity_type="user",
+                entity_id=str(user.id),
+                actor_user_id=str(user.id),
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired two-factor code"
@@ -194,6 +220,13 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             )
         
         if not verify_totp(user.totp_secret, request.totp_code):
+            log_audit(
+                db,
+                action="user_login_totp_failed",
+                entity_type="user",
+                entity_id=str(user.id),
+                actor_user_id=str(user.id),
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid TOTP code"
@@ -203,6 +236,15 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     from datetime import datetime, timezone
     user.last_login = datetime.now(timezone.utc)
     db.commit()
+
+    # Audit: login success
+    log_audit(
+        db,
+        action="user_login_succeeded",
+        entity_type="user",
+        entity_id=str(user.id),
+        actor_user_id=str(user.id),
+    )
     
     # Create tokens
     access_token = create_access_token(data={"sub": str(user.id)})

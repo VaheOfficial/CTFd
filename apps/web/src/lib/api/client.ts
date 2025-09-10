@@ -357,6 +357,19 @@ class ApiClient {
     return this.request('/api/admin/stats')
   }
 
+  // Admin Analytics
+  async getAdminAnalyticsOverview() {
+    return this.request('/api/admin/analytics/overview')
+  }
+
+  async getAdminAnalyticsUsage() {
+    return this.request('/api/admin/analytics/usage')
+  }
+
+  async getAdminAnalyticsHealth() {
+    return this.request('/api/admin/analytics/health')
+  }
+
   async createSeason(season: any) {
     return this.request('/api/seasons', {
       method: 'POST',

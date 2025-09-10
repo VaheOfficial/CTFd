@@ -36,11 +36,14 @@ class UpdateChallengeRequest(BaseModel):
 class AuditLogResponse(BaseModel):
     id: str
     actor_user_id: Optional[str]
+    actor_username: Optional[str] = None
     action: str
     entity_type: str
     entity_id: str
     details_json: Dict[str, Any]
     created_at: datetime
+    ip_address: Optional[str] = None
+    severity: Optional[str] = "info"
 
 class AdminStatsResponse(BaseModel):
     total_users: int
@@ -312,19 +315,47 @@ async def get_audit_logs(
     query = query.order_by(AuditLog.created_at.desc()).limit(limit)
     
     logs = query.all()
-    
-    return [
-        AuditLogResponse(
+
+    # Prefetch usernames
+    actor_ids = [log.actor_user_id for log in logs if log.actor_user_id]
+    users = {}
+    if actor_ids:
+        for user in db.query(User).filter(User.id.in_(actor_ids)).all():
+            users[str(user.id)] = user.username
+
+    def infer_severity(action: str) -> str:
+        a = action.lower()
+        if "failed" in a or "error" in a:
+            return "error"
+        if "updated" in a or "delete" in a:
+            return "warning"
+        return "info"
+
+    responses: List[AuditLogResponse] = []
+    for log in logs:
+        actor_id_str = str(log.actor_user_id) if log.actor_user_id else None
+        actor_username = users.get(actor_id_str) if actor_id_str else None
+        ip_address = None
+        try:
+            if isinstance(log.details_json, dict):
+                ip_address = log.details_json.get("ip") or log.details_json.get("ip_address")
+        except Exception:
+            pass
+
+        responses.append(AuditLogResponse(
             id=str(log.id),
-            actor_user_id=str(log.actor_user_id) if log.actor_user_id else None,
+            actor_user_id=actor_id_str,
+            actor_username=actor_username,
             action=log.action,
             entity_type=log.entity_type,
             entity_id=log.entity_id,
             details_json=log.details_json,
-            created_at=log.created_at
-        )
-        for log in logs
-    ]
+            created_at=log.created_at,
+            ip_address=ip_address,
+            severity=infer_severity(log.action),
+        ))
+
+    return responses
 
 @router.post("/leaderboard/snapshot")
 async def create_leaderboard_snapshot(

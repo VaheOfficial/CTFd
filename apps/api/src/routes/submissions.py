@@ -13,6 +13,7 @@ from ..models.submission import Submission
 from ..utils.auth import get_current_user
 from ..utils.flags import verify_hmac_flag, verify_static_flag
 from ..utils.logging import get_logger
+from ..utils.audit import log_audit
 
 logger = get_logger(__name__)
 
@@ -246,6 +247,19 @@ async def submit_flag(
     db.add(submission)
     db.commit()
     
+    # Audit: flag submission (do not store raw flag)
+    log_audit(
+        db,
+        action="flag_submitted" if not is_correct else "flag_correct",
+        entity_type="challenge",
+        entity_id=challenge_id,
+        actor_user_id=str(current_user.id),
+        details={
+            "is_first_blood": is_first_blood,
+            "points_awarded": points_awarded,
+        },
+    )
+    
     # Log result
     logger.info("Flag submission processed",
                challenge_id=challenge_id,
@@ -334,6 +348,19 @@ async def consume_hint(
     )
     db.add(consumption)
     db.commit()
+    
+    # Audit: hint consumed
+    log_audit(
+        db,
+        action="hint_consumed",
+        entity_type="challenge",
+        entity_id=challenge_id,
+        actor_user_id=str(current_user.id),
+        details={
+            "hint_order": hint_order,
+            "points_deducted": points_deducted,
+        },
+    )
     
     logger.info("Hint consumed",
                challenge_id=challenge_id,

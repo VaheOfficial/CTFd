@@ -17,7 +17,7 @@ from ..services.ai_validator import AIValidator
 from ..models.audit import AuditLog
 from ..utils.auth import require_author
 from ..models.season import Season, Week, WeekChallenge
-from ..llm_providers.router import llm_router
+from ..services.ai_generation import AIGenerationService
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -113,11 +113,11 @@ async def generate_challenge(
                 difficulty=request.difficulty,
                 seed=request.seed)
     
-    # Check if LLM is configured
-    if not llm_router.is_configured():
+    # Check if OpenAI API key is configured
+    if not os.getenv("OPENAI_API_KEY"):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI challenge generation not configured"
+            detail="OpenAI API key not configured"
         )
     
     # Validate prompt safety
@@ -128,90 +128,48 @@ async def generate_challenge(
         )
     
     try:
-        # Load challenge generation template
-        template_path = os.path.join(os.path.dirname(__file__), '..', 'ai_templates', 'challenge_gen.md')
-        with open(template_path, 'r') as f:
-            template = f.read()
+        # Convert admin_ai request to standard format
+        from ..schemas.ai_challenge import GenerateChallengeRequest as StandardRequest, LLMProvider, ChallengeTrack, ChallengeDifficulty
         
-        # Load JSON schema
-        schema_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'packages', 'shared', 'src', 'schemas', 'challenge_gen.schema.json')
-        with open(schema_path, 'r') as f:
-            schema = json.load(f)
+        # Map string values to enums
+        provider_map = {"gpt5": LLMProvider.GPT5, "claude": LLMProvider.CLAUDE, "auto": LLMProvider.AUTO}
+        track_map = {
+            "INTEL_RECON": ChallengeTrack.INTEL_RECON,
+            "ACCESS_EXPLOIT": ChallengeTrack.ACCESS_EXPLOIT,
+            "IDENTITY_CLOUD": ChallengeTrack.IDENTITY_CLOUD,
+            "C2_EGRESS": ChallengeTrack.C2_EGRESS,
+            "DETECT_FORENSICS": ChallengeTrack.DETECT_FORENSICS
+        }
+        difficulty_map = {
+            "EASY": ChallengeDifficulty.EASY,
+            "MEDIUM": ChallengeDifficulty.MEDIUM,
+            "HARD": ChallengeDifficulty.HARD,
+            "INSANE": ChallengeDifficulty.INSANE
+        }
         
-        # Build composite prompt
-        composite_prompt = template + "\n\n" + request.prompt
-        
-        # Add constraints if specified
-        if request.difficulty:
-            composite_prompt += f"\n\nRequired difficulty: {request.difficulty}"
-        if request.track:
-            composite_prompt += f"\nRequired track: {request.track}"
-        if request.seed:
-            composite_prompt += f"\nUse seed: {request.seed} for deterministic generation"
-        
-        # Generate with LLM
-        provider = request.preferred_provider or "auto"
-        response = await llm_router.generate_json(
-            prompt=composite_prompt,
-            schema=schema,
-            provider=provider,
-            temperature=0.1,
-            max_tokens=4000
-        )
-        
-        # Create challenge record
-        challenge_id = str(uuid.uuid4())
-        challenge = Challenge(
-            id=challenge_id,
-            slug=response.parsed_json['id'],
-            title=response.parsed_json['title'],
-            track=response.parsed_json['track'],
-            difficulty=response.parsed_json['difficulty'],
-            points_base=response.parsed_json['points'],
-            time_cap_minutes=response.parsed_json['time_cap_minutes'],
-            mode=response.parsed_json['mode'],
-            status=ChallengeStatus.VALIDATION_PENDING,
-            author_id=current_user.id,
-            description=response.parsed_json.get('description', '')
-        )
-        
-        db.add(challenge)
-        db.flush()  # Get challenge ID
-        
-        # Trigger initial validation
-        validator = AIValidator(db)
-        validation_result = await validator.validate_challenge(challenge, "initial")
-        
-        # Create generation plan
-        generation_plan = GenerationPlan(
-            challenge_id=challenge.id,
-            user_id=current_user.id,
+        standard_request = StandardRequest(
             prompt=request.prompt,
-            provider=response.provider,
-            model=response.model,
-            seed=request.seed,
-            generated_json=response.parsed_json,
-            artifacts_plan=response.parsed_json['artifacts_plan'],
-            prompt_tokens=response.usage.prompt_tokens if response.usage else None,
-            completion_tokens=response.usage.completion_tokens if response.usage else None,
-            total_tokens=response.usage.total_tokens if response.usage else None,
-            cost_usd=response.usage.cost_usd if response.usage else None,
-            status=GenerationStatus.DRAFT
+            preferred_provider=provider_map.get(request.preferred_provider or "auto", LLMProvider.AUTO),
+            track=track_map.get(request.track) if request.track else None,
+            difficulty=difficulty_map.get(request.difficulty) if request.difficulty else None,
+            seed=request.seed
         )
         
-        db.add(generation_plan)
+        # Use the AI generation service
+        service = AIGenerationService(db)
+        response = await service.generate_challenge(standard_request, current_user)
         
         # Audit log
         audit = AuditLog(
             actor_user_id=current_user.id,
             action="ai_challenge_generated",
             entity_type="challenge",
-            entity_id=str(challenge.id),
+            entity_id=response.challenge_id,
             details_json={
                 "provider": response.provider,
                 "model": response.model,
-                "tokens": response.usage.total_tokens if response.usage else None,
-                "cost_usd": response.usage.cost_usd if response.usage else None,
+                "tokens": response.tokens_used,
+                "cost_usd": response.cost_usd,
                 "prompt_preview": request.prompt[:100] + "..." if len(request.prompt) > 100 else request.prompt
             }
         )
@@ -220,18 +178,18 @@ async def generate_challenge(
         db.commit()
         
         logger.info("AI challenge generated successfully",
-                   challenge_id=str(challenge.id),
+                   challenge_id=response.challenge_id,
                    provider=response.provider,
-                   tokens=response.usage.total_tokens if response.usage else None)
+                   tokens=response.tokens_used)
         
         return GenerateChallengeResponse(
-            challenge_id=str(challenge.id),
-            generation_id=str(generation_plan.id),
-            generated_json=response.parsed_json,
+            challenge_id=response.challenge_id,
+            generation_id=response.generation_id,
+            generated_json=response.generated_json,
             provider=response.provider,
             model=response.model,
-            tokens_used=response.usage.total_tokens if response.usage else None,
-            cost_usd=response.usage.cost_usd if response.usage else None
+            tokens_used=response.tokens_used,
+            cost_usd=response.cost_usd
         )
         
     except Exception as e:

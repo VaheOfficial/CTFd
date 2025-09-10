@@ -5,7 +5,7 @@ from fastapi.security import HTTPBearer
 import os
 
 from src.database import engine, Base
-from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, ai_challenge, two_factor, notifications
+from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, ai_challenge, two_factor, notifications, analytics
 from src.utils.logging import setup_logging
 from src.utils.logging import get_logger
 
@@ -72,6 +72,7 @@ app.include_router(submissions.router, prefix="/api", tags=["Submissions"])
 app.include_router(artifacts.router, prefix="/api", tags=["Artifacts"])
 app.include_router(leaderboard.router, prefix="/api", tags=["Leaderboard"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(analytics.router, prefix="/api/admin/analytics", tags=["Admin Analytics"]) 
 app.include_router(ai_challenge.router, prefix="/api", tags=["AI Generation"])
 app.include_router(notifications.router, prefix="/api", tags=["Notifications"])
 

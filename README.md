@@ -141,8 +141,7 @@ make seed
 **Create Credentials**
 - **Create an Admin account**: docker exec -it [container] /bin/sh
 ```bash
-psql -U cte -d cte -c "UPDATE users SET role='ADMIN' WHERE username='[user]'; SELECT username, 
-role FROM users WHERE username='[user]';"
+psql -U cte -d cte -c "UPDATE users SET role='ADMIN' WHERE username='[user]'; SELECT username, role FROM users WHERE username='[user]';"
 ```
 **Quick ShutDown and StartUp for testing (Especially after new dependency)**
 ```bash

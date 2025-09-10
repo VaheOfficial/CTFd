@@ -26,82 +26,36 @@ import {
   RefreshCw
 } from 'lucide-react'
 
-// Mock audit logs - replace with actual API call
-const mockAuditLogs = [
-  {
-    id: '1',
-    action: 'challenge.published',
-    entity_type: 'challenge',
-    entity_id: 'ch_123',
-    actor_user_id: 'user_admin',
-    actor_username: 'admin',
-    details: { challenge_title: 'Advanced Network Forensics', season_id: 'season_1', week: 3 },
-    timestamp: '2024-01-15T14:30:00Z',
-    ip_address: '192.168.1.100',
-    severity: 'info'
-  },
-  {
-    id: '2',
-    action: 'user.role_changed',
-    entity_type: 'user',
-    entity_id: 'user_123',
-    actor_user_id: 'user_admin',
-    actor_username: 'admin',
-    details: { old_role: 'participant', new_role: 'moderator', target_username: 'security_student' },
-    timestamp: '2024-01-15T13:15:00Z',
-    ip_address: '192.168.1.100',
-    severity: 'warning'
-  },
-  {
-    id: '3',
-    action: 'ai.challenge_generated',
-    entity_type: 'challenge',
-    entity_id: 'ch_ai_456',
-    actor_user_id: 'user_admin',
-    actor_username: 'admin',
-    details: { prompt: 'Create malware analysis challenge', status: 'success' },
-    timestamp: '2024-01-15T12:45:00Z',
-    ip_address: '192.168.1.100',
-    severity: 'info'
-  },
-  {
-    id: '4',
-    action: 'user.failed_login',
-    entity_type: 'user',
-    entity_id: 'user_456',
-    actor_user_id: null,
-    actor_username: 'unknown',
-    details: { username: 'attacker_user', reason: 'invalid_password', attempts: 3 },
-    timestamp: '2024-01-15T11:30:00Z',
-    ip_address: '203.0.113.42',
-    severity: 'error'
-  },
-  {
-    id: '5',
-    action: 'season.created',
-    entity_type: 'season',
-    entity_id: 'season_2',
-    actor_user_id: 'user_admin',
-    actor_username: 'admin',
-    details: { season_name: 'Spring DCO Challenge 2024', total_weeks: 8 },
-    timestamp: '2024-01-15T10:00:00Z',
-    ip_address: '192.168.1.100',
-    severity: 'info'
-  }
-]
+type AuditLog = {
+  id: string
+  action: string
+  entity_type: string
+  entity_id: string
+  actor_user_id?: string | null
+  actor_username?: string | null
+  details_json: Record<string, any>
+  created_at: string
+  ip_address?: string | null
+  severity?: 'info' | 'warning' | 'error' | 'success'
+}
 
 export default function AdminAuditPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [actionFilter, setActionFilter] = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
   const [dateRange, setDateRange] = useState('all')
+  const { data: logs } = useAuditLogs({})
   
-  const filteredLogs = mockAuditLogs.filter(log => {
+  const records: AuditLog[] = (logs as any) || []
+
+  const filteredLogs = records.filter((log) => {
+    const actorName = (log.actor_username || '').toLowerCase()
+    const detailsStr = JSON.stringify(log.details_json || {}).toLowerCase()
     const matchesSearch = log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         log.actor_username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         JSON.stringify(log.details).toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesAction = actionFilter === 'all' || log.action.startsWith(actionFilter)
-    const matchesSeverity = severityFilter === 'all' || log.severity === severityFilter
+                         actorName.includes(searchQuery.toLowerCase()) ||
+                         detailsStr.includes(searchQuery.toLowerCase())
+    const matchesAction = actionFilter === 'all' || log.action.toLowerCase().startsWith(actionFilter)
+    const matchesSeverity = severityFilter === 'all' || (log.severity || 'info') === severityFilter
     
     return matchesSearch && matchesAction && matchesSeverity
   })
@@ -321,7 +275,7 @@ export default function AdminAuditPage() {
             {filteredLogs.map((log) => (
               <div key={log.id} className="flex items-start space-x-4 p-4 rounded-lg border border-slate-700 hover:border-brand/50 transition-colors">
                 <div className="flex items-center space-x-2 mt-1">
-                  {getSeverityIcon(log.severity)}
+                  {getSeverityIcon(log.severity || 'info')}
                   {getActionIcon(log.action)}
                 </div>
                 
@@ -331,31 +285,31 @@ export default function AdminAuditPage() {
                       <h3 className="font-medium text-white">
                         {formatActionName(log.action)}
                       </h3>
-                      {getSeverityBadge(log.severity)}
+                      {getSeverityBadge(log.severity || 'info')}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {new Date(log.timestamp).toLocaleString()}
+                      {new Date(log.created_at).toLocaleString()}
                     </div>
                   </div>
                   
                   <div className="flex items-center space-x-4 text-sm text-muted-foreground mb-2">
                     <span className="flex items-center gap-1">
                       <User className="h-3 w-3" />
-                      {log.actor_username}
+                      {log.actor_username || 'unknown'}
                     </span>
                     <span className="flex items-center gap-1">
                       <Activity className="h-3 w-3" />
                       {log.entity_type}
                     </span>
                     <span>
-                      IP: {log.ip_address}
+                      IP: {log.ip_address || 'N/A'}
                     </span>
                   </div>
                   
                   {/* Event Details */}
                   <div className="bg-slate-800/50 rounded-lg p-3">
                     <div className="text-sm">
-                      {Object.entries(log.details).map(([key, value]) => (
+                      {Object.entries(log.details_json || {}).map(([key, value]) => (
                         <div key={key} className="flex justify-between items-center py-1">
                           <span className="text-slate-400 capitalize">
                             {key.replace(/_/g, ' ')}:
