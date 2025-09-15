@@ -4,6 +4,7 @@ import jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Optional as _Optional
 from sqlalchemy.orm import Session
 import os
 import secrets
@@ -100,6 +101,27 @@ def get_current_user(
         )
     
     return user
+
+def get_current_user_optional(
+    credentials: _Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
+    db: Session = Depends(get_db)
+) -> _Optional[User]:
+    """Return the current user if Authorization is provided and valid; otherwise None.
+    Does not raise on missing/invalid token to allow public access endpoints.
+    """
+    try:
+        if not credentials:
+            return None
+        payload = verify_token(credentials.credentials)
+        if payload.get("type") != "access":
+            return None
+        user_id: str = payload.get("sub")
+        if not user_id:
+            return None
+        user = db.query(User).filter(User.id == user_id).first()
+        return user
+    except Exception:
+        return None
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """Require admin role"""

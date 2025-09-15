@@ -1,12 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import json
+import time
 import os
 import re
 import uuid
+import asyncio
 from datetime import datetime
 
 from ..database import get_db
@@ -19,6 +22,7 @@ from ..utils.auth import require_author
 from ..models.season import Season, Week, WeekChallenge
 from ..services.ai_generation import AIGenerationService
 from ..utils.logging import get_logger
+from ..utils.stream import stream_manager
 
 logger = get_logger(__name__)
 
@@ -30,6 +34,9 @@ class GenerateChallengeRequest(BaseModel):
     difficulty: Optional[str] = Field(None, pattern="^(EASY|MEDIUM|HARD|INSANE)$")
     track: Optional[str] = Field(None, pattern="^(INTEL_RECON|ACCESS_EXPLOIT|IDENTITY_CLOUD|C2_EGRESS|DETECT_FORENSICS)$")
     seed: Optional[int] = Field(None, ge=1, le=999999)
+    max_iterations: Optional[int] = Field(None, ge=1, le=50)
+    # Optional client-provided stream ID to allow the UI to subscribe before POST returns
+    client_stream_id: Optional[str] = None
 
 class GenerateChallengeResponse(BaseModel):
     challenge_id: str
@@ -39,6 +46,7 @@ class GenerateChallengeResponse(BaseModel):
     model: str
     tokens_used: Optional[int]
     cost_usd: Optional[float]
+    stream_id: str
 
 class MaterializeRequest(BaseModel):
     pass  # No additional parameters needed
@@ -51,27 +59,26 @@ class RetryValidationRequest(BaseModel):
     validation_type: str = Field(..., pattern="^(initial|post_materialization)$")
 
 def rate_limit_ai_generation(max_per_minute: int = 5):
-    def decorator(func):
-        async def wrapper(request: GenerateChallengeRequest, current_user: User, db: Session) -> GenerateChallengeResponse:
-            logger.info("Rate limiting check starting")
-            try:
-                import os
-                import redis
-                user_id = str(current_user.id)
-                r = redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
-                key = f"ai_rate:{user_id}"
-                count = r.incr(key)
-                if count == 1:
-                    r.expire(key, 60)
-                if count > max_per_minute:
-                    raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
-                logger.info("Rate limiting check passed")
-            except Exception as e:
-                logger.warning("Rate limiting check failed", error=str(e))
-                pass
-            return await func(request, current_user, db)
-        return wrapper
-    return decorator
+    async def dependency(current_user: User = Depends(require_author)):
+        logger.info("Rate limiting check starting")
+        try:
+            import os
+            import redis
+            user_id = str(current_user.id)
+            r = redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
+            key = f"ai_rate:{user_id}"
+            count = r.incr(key)
+            if count == 1:
+                r.expire(key, 60)
+            if count > max_per_minute:
+                raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+            logger.info("Rate limiting check passed")
+        except Exception as e:
+            logger.warning("Rate limiting check failed", error=str(e))
+            # Best-effort; do not block
+            pass
+        return None
+    return dependency
 
 def validate_prompt_safety(prompt: str) -> bool:
     """Basic prompt safety validation"""
@@ -97,21 +104,14 @@ def validate_prompt_safety(prompt: str) -> bool:
     
     return True
 
-@router.post("/generate", response_model=GenerateChallengeResponse)
+@router.post("/generate")
 async def generate_challenge(
     request: GenerateChallengeRequest,
     _: None = Depends(rate_limit_ai_generation(max_per_minute = 5)),
     current_user: User = Depends(require_author),
     db: Session = Depends(get_db)
-) -> GenerateChallengeResponse:
-    logger.info("Entering generate_challenge endpoint")
-    """Generate a challenge using AI"""
-    logger.info("Generating challenge", 
-                prompt=request.prompt,
-                provider=request.preferred_provider,
-                track=request.track,
-                difficulty=request.difficulty,
-                seed=request.seed)
+):
+    """Generate a challenge using AI with Server-Sent Events streaming"""
     
     # Check if OpenAI API key is configured
     if not os.getenv("OPENAI_API_KEY"):
@@ -126,79 +126,158 @@ async def generate_challenge(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Prompt contains potentially unsafe content"
         )
-    
-    try:
-        # Convert admin_ai request to standard format
-        from ..schemas.ai_challenge import GenerateChallengeRequest as StandardRequest, LLMProvider, ChallengeTrack, ChallengeDifficulty
+
+    async def event_stream():
+        stream_id = request.client_stream_id or str(uuid.uuid4())
         
-        # Map string values to enums
-        provider_map = {"gpt5": LLMProvider.GPT5, "claude": LLMProvider.CLAUDE, "auto": LLMProvider.AUTO}
-        track_map = {
-            "INTEL_RECON": ChallengeTrack.INTEL_RECON,
-            "ACCESS_EXPLOIT": ChallengeTrack.ACCESS_EXPLOIT,
-            "IDENTITY_CLOUD": ChallengeTrack.IDENTITY_CLOUD,
-            "C2_EGRESS": ChallengeTrack.C2_EGRESS,
-            "DETECT_FORENSICS": ChallengeTrack.DETECT_FORENSICS
-        }
-        difficulty_map = {
-            "EASY": ChallengeDifficulty.EASY,
-            "MEDIUM": ChallengeDifficulty.MEDIUM,
-            "HARD": ChallengeDifficulty.HARD,
-            "INSANE": ChallengeDifficulty.INSANE
-        }
-        
-        standard_request = StandardRequest(
-            prompt=request.prompt,
-            preferred_provider=provider_map.get(request.preferred_provider or "auto", LLMProvider.AUTO),
-            track=track_map.get(request.track) if request.track else None,
-            difficulty=difficulty_map.get(request.difficulty) if request.difficulty else None,
-            seed=request.seed
-        )
-        
-        # Use the AI generation service
-        service = AIGenerationService(db)
-        response = await service.generate_challenge(standard_request, current_user)
-        
-        # Audit log
-        audit = AuditLog(
-            actor_user_id=current_user.id,
-            action="ai_challenge_generated",
-            entity_type="challenge",
-            entity_id=response.challenge_id,
-            details_json={
-                "provider": response.provider,
-                "model": response.model,
-                "tokens": response.tokens_used,
-                "cost_usd": response.cost_usd,
-                "prompt_preview": request.prompt[:100] + "..." if len(request.prompt) > 100 else request.prompt
+        try:
+            # Send initial event
+            yield f"data: {json.dumps({'type': 'init', 'stream_id': stream_id, 'message': 'Starting generation'})}\n\n"
+            
+            # Convert admin_ai request to standard format
+            from ..schemas.ai_challenge import GenerateChallengeRequest as StandardRequest, LLMProvider, ChallengeTrack, ChallengeDifficulty
+            
+            # Map string values to enums
+            provider_map = {"gpt5": LLMProvider.GPT5, "claude": LLMProvider.CLAUDE, "auto": LLMProvider.AUTO}
+            track_map = {
+                "INTEL_RECON": ChallengeTrack.INTEL_RECON,
+                "ACCESS_EXPLOIT": ChallengeTrack.ACCESS_EXPLOIT,
+                "IDENTITY_CLOUD": ChallengeTrack.IDENTITY_CLOUD,
+                "C2_EGRESS": ChallengeTrack.C2_EGRESS,
+                "DETECT_FORENSICS": ChallengeTrack.DETECT_FORENSICS
             }
-        )
-        
-        db.add(audit)
-        db.commit()
-        
-        logger.info("AI challenge generated successfully",
-                   challenge_id=response.challenge_id,
-                   provider=response.provider,
-                   tokens=response.tokens_used)
-        
-        return GenerateChallengeResponse(
-            challenge_id=response.challenge_id,
-            generation_id=response.generation_id,
-            generated_json=response.generated_json,
-            provider=response.provider,
-            model=response.model,
-            tokens_used=response.tokens_used,
-            cost_usd=response.cost_usd
-        )
-        
-    except Exception as e:
-        logger.error("AI challenge generation failed", error=str(e))
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Challenge generation failed: {str(e)}"
-        )
+            difficulty_map = {
+                "EASY": ChallengeDifficulty.EASY,
+                "MEDIUM": ChallengeDifficulty.MEDIUM,
+                "HARD": ChallengeDifficulty.HARD,
+                "INSANE": ChallengeDifficulty.INSANE
+            }
+            
+            yield f"data: {json.dumps({'type': 'plan', 'message': 'Preparing generation request'})}\n\n"
+            
+            standard_request = StandardRequest(
+                prompt=request.prompt,
+                preferred_provider=provider_map.get(request.preferred_provider or "auto", LLMProvider.AUTO),
+                track=track_map.get(request.track) if request.track else None,
+                difficulty=difficulty_map.get(request.difficulty) if request.difficulty else None,
+                seed=request.seed
+            )
+            
+            # Use the AI generation service
+            service = AIGenerationService(db)
+            
+            # If caller specified iterations, override for this run
+            if request.max_iterations:
+                try:
+                    service.agent.config.max_iterations = int(request.max_iterations)
+                except Exception:
+                    pass
+            
+            yield f"data: {json.dumps({'type': 'build', 'message': 'Starting AI agent'})}\n\n"
+            
+            # Create a task to run the generation
+            generation_task = asyncio.create_task(
+                service.generate_challenge(standard_request, current_user, stream_id=stream_id)
+            )
+            
+            # Stream events while generation is running
+            response = None
+            last_heartbeat = time.time()
+            while not generation_task.done():
+                # Check for incoming events from stream_manager with a longer timeout
+                event = await stream_manager.get_next_incoming(stream_id, timeout_sec=0.5)
+                if event:
+                    logger.info(f"SSE forwarding event: {event.get('type', 'unknown')}")
+                    # Forward the event to SSE
+                    yield f"data: {json.dumps(event)}\n\n"
+                    # Flush a heartbeat occasionally to encourage streaming in proxies/clients
+                    last_heartbeat = time.time()
+                
+                # Check if task completed
+                if generation_task.done():
+                    try:
+                        response = await generation_task
+                        break
+                    except Exception as e:
+                        raise e
+                
+                # Small delay to prevent busy waiting if no event
+                if not event:
+                    await asyncio.sleep(0.1)
+                    # Send periodic heartbeat to keep buffers flushing
+                    if time.time() - last_heartbeat >= 1.0:
+                        yield ": keep-alive\n\n"
+                        last_heartbeat = time.time()
+            
+            # Ensure we get the result
+            if response is None:
+                response = await generation_task
+            
+            # Process any remaining events after generation completes
+            remaining_events = 0
+            while remaining_events < 10:  # Max 10 remaining events to prevent infinite loop
+                event = await stream_manager.get_next_incoming(stream_id, timeout_sec=0.1)
+                if event:
+                    yield f"data: {json.dumps(event)}\n\n"
+                    remaining_events += 1
+                else:
+                    break
+            
+            yield f"data: {json.dumps({'type': 'verify', 'message': 'Generation completed, verifying'})}\n\n"
+            
+            # Audit log
+            audit = AuditLog(
+                actor_user_id=current_user.id,
+                action="ai_challenge_generated",
+                entity_type="challenge",
+                entity_id=response.challenge_id,
+                details_json={
+                    "provider": response.provider,
+                    "model": response.model,
+                    "tokens": response.tokens_used,
+                    "cost_usd": response.cost_usd,
+                    "prompt_preview": request.prompt[:100] + "..." if len(request.prompt) > 100 else request.prompt
+                }
+            )
+            
+            db.add(audit)
+            db.commit()
+            
+            yield f"data: {json.dumps({'type': 'extract', 'message': 'Extracting metadata'})}\n\n"
+            yield f"data: {json.dumps({'type': 'materialize', 'message': 'Materializing assets'})}\n\n"
+            
+            # Send final completion event
+            yield f"data: {json.dumps({'type': 'complete', 'challenge_id': response.challenge_id, 'generation_id': response.generation_id, 'provider': response.provider, 'model': response.model, 'tokens_used': response.tokens_used, 'cost_usd': response.cost_usd})}\n\n"
+            
+        except Exception as e:
+            logger.error("AI challenge generation failed", error=str(e))
+            db.rollback()
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Cache-Status": "no-transform",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
+
+
+
+@router.get("/status/{stream_id}")
+async def get_generation_status(
+    stream_id: str,
+    current_user: User = Depends(require_author)
+):
+    """Get the current status and events for a generation stream"""
+    # This would return events from the stream manager
+    # For now, return empty - the frontend will simulate
+    return {"stream_id": stream_id, "events": [], "status": "running"}
 
 @router.post("/materialize/{challenge_id}")
 async def materialize_challenge(

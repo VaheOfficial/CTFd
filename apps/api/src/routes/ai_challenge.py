@@ -48,11 +48,12 @@ async def generate_challenge(
     )
     
     try:
-        # Check rate limit
-        await rate_limit_generation(
-            lambda: None,
-            current_user=current_user
-        )()
+        # Check rate limit (apply decorator then invoke with current_user)
+        # Provide an async no-op that accepts arbitrary kwargs so the wrapper can await it
+        async def _noop(**kwargs):
+            return None
+        limiter_wrapper = await rate_limit_generation(_noop)
+        await limiter_wrapper(current_user=current_user)
         
         # Initialize service
         service = AIGenerationService(db)

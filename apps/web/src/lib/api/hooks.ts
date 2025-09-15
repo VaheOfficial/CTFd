@@ -96,9 +96,7 @@ export function useSubmitFlag(challengeId: string) {
         queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
         queryClient.invalidateQueries({ queryKey: queryKeys.me() })
       } else {
-        toast.error('❌ Incorrect flag', {
-          description: response.data?.message || 'Try again!',
-        })
+        toast.error(response.data?.message || 'Try again!')
       }
     },
     onError: (error: any) => {

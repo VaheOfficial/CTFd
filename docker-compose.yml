@@ -22,10 +22,10 @@ services:
     image: caddy:2.7-alpine
     container_name: cte-caddy
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+    # ports:
+    #   - "80:80"
+    #   - "443:443"
+    #   - "443:443/udp"
     volumes:
       - ./infra/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
@@ -142,6 +142,8 @@ services:
       - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - core-net
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_DB=cte
       - POSTGRES_USER=cte

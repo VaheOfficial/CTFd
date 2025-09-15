@@ -9,6 +9,7 @@ from .audit import AuditLog
 from .lab import LabTemplate, LabInstance
 from .config import ConfigKV
 from .generation import GenerationPlan
+from .two_factor import TwoFactorCode, TwoFactorSettings
 
 __all__ = [
     "User",
@@ -30,5 +31,7 @@ __all__ = [
     "LabTemplate",
     "LabInstance",
     "ConfigKV",
-    "GenerationPlan"
+    "GenerationPlan",
+    "TwoFactorCode",
+    "TwoFactorSettings"
 ]

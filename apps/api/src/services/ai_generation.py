@@ -5,7 +5,7 @@ import json
 import os
 from sqlalchemy.orm import Session
 
-from ..models.challenge import Challenge, ChallengeStatus
+from ..models.challenge import Challenge, ChallengeStatus, ChallengeMode
 from ..models.generation import GenerationPlan, GenerationStatus
 from ..models.user import User
 from ..schemas.ai_challenge import (
@@ -17,6 +17,10 @@ from ..schemas.ai_challenge import (
 from ..agents import ChallengeAgent, AgentConfig
 from ..utils.logging import get_logger
 from .challenge_materializer import ChallengeMaterializer
+try:
+    from ..utils.stream import stream_manager
+except Exception:
+    stream_manager = None
 
 logger = get_logger(__name__)
 
@@ -30,7 +34,8 @@ class AIGenerationService:
     async def generate_challenge(
         self,
         request: GenerateChallengeRequest,
-        user: User
+        user: User,
+        stream_id: str | None = None
     ) -> GenerateChallengeResponse:
         """
         Generate a new challenge using AI
@@ -49,22 +54,25 @@ class AIGenerationService:
             self.logger.info("Starting challenge generation with ChallengeAgent", provider=request.preferred_provider)
             
             # Run the generation pipeline
-            result = await self.agent.generate_challenge(request)
+            result = await self.agent.generate_challenge(request, stream_id=stream_id)
             
             # Create challenge record first
             challenge_id = result.challenge_id  # Use the agent's challenge ID
+            # Title/description should come from AI outputs if present; avoid placeholder
+            ai_title = result.generated_json.get('title')
+            ai_description = result.generated_json.get('description')
             challenge = Challenge(
                 id=challenge_id,
                 slug=f"challenge-{challenge_id[:8]}",
-                title=result.generated_json.get('title', 'Generated Challenge'),
+                title=(ai_title.strip() if isinstance(ai_title, str) and ai_title.strip() else 'Generated Challenge'),
                 track=request.track,
                 difficulty=request.difficulty,
                 points_base=self._calculate_points(request.difficulty),
                 time_cap_minutes=self._calculate_time_cap(request.difficulty),
-                mode="standard",
+                mode=ChallengeMode.SOLO,
                 status=ChallengeStatus.DRAFT,  # Will be updated to PUBLISHED after materialization
                 author_id=user.id,
-                description=result.generated_json.get('description', '')
+                description=(ai_description.strip() if isinstance(ai_description, str) else '')
             )
             self.db.add(challenge)
             self.db.flush()  # Get the challenge in DB before materialization
@@ -75,12 +83,32 @@ class AIGenerationService:
             
             if workspace_dir:
                 logger.info(f"Materializing challenge from workspace: {workspace_dir}")
+                if stream_manager and stream_id:
+                    try:
+                        await stream_manager.publish(stream_id, {
+                            "type": "materialize_start",
+                            "challenge_id": challenge_id,
+                            "workspace": workspace_dir
+                        })
+                    except Exception:
+                        pass
                 materialization = await materializer.materialize_challenge(
                     challenge_id, 
                     workspace_dir, 
                     result.generated_json
                 )
                 logger.info(f"Materialization complete: {materialization}")
+                if stream_manager and stream_id:
+                    try:
+                        await stream_manager.publish(stream_id, {
+                            "type": "materialize_complete",
+                            "challenge_id": challenge_id,
+                            "artifacts": len(materialization.get('artifacts_created', [])),
+                            "hints": len(materialization.get('hints_created', [])),
+                            "flag_configured": materialization.get('flag_configured', False)
+                        })
+                    except Exception:
+                        pass
                 
                 # Add materialization info to result
                 result.generated_json["materialization"] = materialization
@@ -102,6 +130,13 @@ class AIGenerationService:
                 status=GenerationStatus.DRAFT
             )
 
+            # If materialized, update plan status and trace before saving
+            if result.generated_json.get("materialization"):
+                generation_plan.status = GenerationStatus.MATERIALIZED
+                from datetime import datetime
+                generation_plan.materialized_at = datetime.utcnow()
+                generation_plan.materialization_trace = result.generated_json.get("materialization")
+
             # Save to database
             self.db.add(challenge)
             self.db.add(generation_plan)
@@ -112,6 +147,15 @@ class AIGenerationService:
                 challenge_id=str(challenge.id),
                 generation_id=str(generation_plan.id)
             )
+            if stream_manager and stream_id:
+                try:
+                    await stream_manager.publish(stream_id, {
+                        "type": "service_complete",
+                        "challenge_id": str(challenge.id),
+                        "generation_id": str(generation_plan.id)
+                    })
+                except Exception:
+                    pass
 
             return GenerateChallengeResponse(
                 challenge_id=str(challenge.id),

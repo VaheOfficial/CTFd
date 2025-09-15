@@ -26,13 +26,21 @@ def materialize_artifacts(self, challenge_id: str, artifacts_plan: list):
         from generators.utils import generate_artifact
         
         # Setup S3 client
-        s3_client = boto3.client(
+        from boto3.session import Session as BotoSession
+        from botocore.config import Config
+        s3_client = BotoSession().client(
             's3',
             endpoint_url=os.getenv('S3_ENDPOINT', 'http://minio:9000'),
             aws_access_key_id=os.getenv('S3_ACCESS_KEY', 'minio'),
-            aws_secret_access_key=os.getenv('S3_SECRET_KEY', 'minio123')
+            aws_secret_access_key=os.getenv('S3_SECRET_KEY', 'minio123'),
+            config=Config(signature_version='s3v4', s3={'addressing_style': 'path'})
         )
         bucket = os.getenv('S3_BUCKET', 'cte-artifacts')
+        # Ensure bucket exists
+        try:
+            s3_client.head_bucket(Bucket=bucket)
+        except Exception:
+            s3_client.create_bucket(Bucket=bucket)
         
         materialized_artifacts = []
         trace_log = []

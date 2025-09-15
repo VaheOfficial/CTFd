@@ -69,9 +69,9 @@ export default function ChallengePage() {
       if ((result as any)?.is_correct) {
         setShowConfetti(true)
         setTimeout(() => setShowConfetti(false), 3000)
-        toast.success(`Correct! You earned ${formatPoints((result as any)?.points_awarded || 0)} points!`)
+        // toast.success(`Correct! You earned ${formatPoints((result as any)?.points_awarded || 0)} points!`)
       } else {
-        toast.error('Incorrect flag. Try again!')
+        // toast.error('Incorrect flag. Try again!')
       }
       
       setFlagInput('')

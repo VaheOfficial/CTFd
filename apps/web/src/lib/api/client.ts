@@ -327,8 +327,10 @@ class ApiClient {
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'INSANE';
     track?: 'INTEL_RECON' | 'ACCESS_EXPLOIT' | 'IDENTITY_CLOUD' | 'C2_EGRESS' | 'DETECT_FORENSICS';
     seed?: number;
+    max_iterations?: number;
+    client_stream_id?: string;
   }) {
-    type GenerateResponse = paths['/api/admin/ai/generate']['post']['responses']['200']['content']['application/json']
+    type GenerateResponse = paths['/api/admin/ai/generate']['post']['responses']['200']['content']['application/json'] & { stream_id: string }
     return this.request<GenerateResponse>('/api/admin/ai/generate', {
       method: 'POST',
       body: params,

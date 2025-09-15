@@ -6,6 +6,7 @@ import uuid
 from enum import Enum
 
 from ..database import Base
+from .notification import Notification
 
 class UserRole(str, Enum):
     ADMIN = 'ADMIN'
