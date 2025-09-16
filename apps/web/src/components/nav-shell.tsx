@@ -74,7 +74,7 @@ export function NavShell({ children }: { children: React.ReactNode }) {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors">
-                  CTF Platform
+                  BlackBox
                 </h1>
                 <p className="text-base text-muted-foreground">Defensive Cyber Ops</p>
               </div>
@@ -240,7 +240,7 @@ export function NavShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <h1 className="text-lg font-bold text-foreground">
-              CTF Platform
+              BlackBox
             </h1>
           </Link>
 
