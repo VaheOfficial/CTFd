@@ -54,6 +54,11 @@ class ChallengeAgent:
         logger.info(f"Starting challenge generation - ID: {challenge_id}, Workspace: {workspace_dir}")
         if stream_manager and stream_id:
             await stream_manager.publish(stream_id, {"type": "start", "challenge_id": challenge_id, "workspace": str(workspace_dir)})
+            try:
+                stream_manager.set_meta(stream_id, "workspace", str(workspace_dir))
+                stream_manager.set_meta(stream_id, "challenge_id", challenge_id)
+            except Exception:
+                pass
         logger.info(f"Request: track={request.track}, difficulty={request.difficulty}, prompt_length={len(request.prompt)}")
         
         # Update tool registry workspace
@@ -83,12 +88,19 @@ Your workflow MUST include:
 You have these tools:
 - write_file: Create files in the workspace
 - read_file: Read existing files
-- execute_shell: Run commands (python, make, pip, etc.)
+- execute_shell: Run commands (python, make, etc.). Auto-uses a per-workspace virtualenv if present.
 - list_files: Check directory contents
+- install_pip_packages: Install Python packages into the workspace virtualenv from a list or requirements.txt
+- install_system_packages: Install system packages (apt-get/yum/apk) with safety checks (may be disabled)
+- request_user_input: Ask the human for input (kind = "file" or "text"). ALWAYS include helpful context: expected format, size, constraints, and, if possible, a tiny base64 preview image (<=100KB). The agent will pause until a response is provided.
 
 EXECUTION REQUIREMENTS:
 - After creating build scripts, you MUST run them using execute_shell
 - If you create a Makefile, you MUST run "make build" or "make all"
+- Use install_pip_packages for Python dependencies (prefer requirements.txt) instead of running "pip install" directly
+- If system dependencies are needed (e.g., "build-essential", "git"), use install_system_packages; if disabled or fails, explain and proceed accordingly
+- If you need a user-provided artifact (e.g., PCAP, data sample), use request_user_input with kind "file" and a clear prompt
+- When requesting input, provide precise context (format, size, constraints) and optionally a tiny base64 preview to guide the user
 - You MUST verify the challenge artifacts were actually created
 - You MUST test that the solution path works (e.g., run verification scripts)
 - Generate a realistic flag in format CTF{{...}}
@@ -99,7 +111,9 @@ Example workflow:
 2. Create flag.txt with CTF{{...}}
 3. **RUN: execute_shell("python3 scripts/generate_artifact.py")**
 4. **RUN: execute_shell("ls -la challenge/")** to verify artifacts exist
-5. **RUN: execute_shell("python3 scripts/verify_artifact.py")** to test
+5. If Python deps are needed, **RUN: install_pip_packages({{\"requirements_path\": \"requirements.txt\"}})**
+6. If a user asset is needed, **RUN: request_user_input({{\"kind\": \"file\", \"prompt\": \"Please upload the sample PCAP file\", \"accept_mime\": [\"application/vnd.tcpdump.pcap\", \"application/octet-stream\"]}})**
+7. **RUN: execute_shell("python3 scripts/verify_artifact.py")** to test
 
 DO NOT STOP until you have created AND BUILT the actual challenge files!
 
@@ -115,6 +129,16 @@ Output contract for downstream materialization:
       "type": "static" | "dynamic_hmac",
       "value": "{ctf_example_literal}" ,              // required if type == static
       "format": "{flag_format_literal}"              // optional; default is {flag_format_literal}
+    }},
+    "lab": {{
+      // ALWAYS INCLUDE this object. If the challenge is NOT hosted, set all fields to null/empty.
+      // The platform builds/runs hosted challenges for players on demand.
+      // If the user is vague, infer reasonable defaults (prefer a simple container app).
+      "type": "container" | "compose" | null,
+      "dockerfile_dir": "./" | "web" | "service" | "path/to/dir" | null,  // for container; if unsure, use "web" if it exists else "./"
+      "ports": [80, 3000] | null,                                              // OPTIONAL; platform auto-detects from Dockerfile EXPOSE; set null if unsure
+      "env": {{ "KEY": "VALUE" }} | {{}},                                      // OPTIONAL env vars
+      "compose_file": "docker-compose.yml" | null                              // for compose; ensure file exists if provided
     }}
   }}
   2) 'deliverables.json' containing only the artifact list (for backward compatibility):
@@ -221,8 +245,45 @@ Output contract for downstream materialization:
                                     "error": str(e)
                                 })
                         
-                        # Execute tool
-                        tool_result = await asyncio.to_thread(self.tools.execute_tool, function_name, arguments)
+                        # Intercept user input request tool to pause and wait for user response
+                        if function_name == 'request_user_input' and stream_manager and stream_id:
+                            req_prompt = (arguments or {}).get('prompt') or 'The agent requests input from you.'
+                            req_kind = (arguments or {}).get('kind') or 'text'
+                            req_hint = (arguments or {}).get('hint')
+                            accept_mime = (arguments or {}).get('accept_mime') or []
+                            suggested_filename = (arguments or {}).get('suggested_filename')
+                            req_context = (arguments or {}).get('context') or {}
+                            request_id = str(uuid4())
+                            await stream_manager.publish(stream_id, {
+                                "type": "user_request",
+                                "request_id": request_id,
+                                "kind": req_kind,
+                                "prompt": req_prompt,
+                                "hint": req_hint,
+                                "accept_mime": accept_mime,
+                                "suggested_filename": suggested_filename,
+                                "context": req_context
+                            })
+                            # Wait for control reply
+                            user_reply = None
+                            for _ in range(3600):  # up to ~1 hour max waiting with 1s checks
+                                user_reply = await stream_manager.get_next_control(stream_id, timeout_sec=1.0)
+                                if user_reply and user_reply.get('type') == 'user_response' and user_reply.get('request_id') == request_id:
+                                    break
+                            if not user_reply:
+                                tool_result = {"success": False, "error": "No user response received in time"}
+                            else:
+                                accepted = bool(user_reply.get('accepted'))
+                                tool_result = {
+                                    "success": accepted,
+                                    "accepted": accepted,
+                                    "reason": user_reply.get('reason'),
+                                    "text": user_reply.get('text'),
+                                    "file_rel_path": user_reply.get('file_rel_path')
+                                }
+                        else:
+                            # Execute tool normally
+                            tool_result = await asyncio.to_thread(self.tools.execute_tool, function_name, arguments)
                         logger.info(f"Tool {function_name} result: {tool_result.get('success', 'error' not in tool_result)}")
                         if stream_manager and stream_id:
                             payload = {k: v for k, v in (arguments or {}).items()}

@@ -24,6 +24,21 @@ class AgentConfig(BaseModel):
     forbidden_patterns: List[str] = Field(default_factory=lambda: [
         "sudo", "rm -rf", "dd if=", "mkfs", "fdisk", "nc", "netcat"
     ])
+
+    # Package installation controls
+    allow_system_installs: bool = Field(default=False, description="Allow installing system packages via a dedicated tool")
+    system_package_manager: str = Field(default="apt-get", description="System package manager: apt-get | yum | apk")
+    system_install_allowlist: List[str] = Field(default_factory=lambda: [
+        "build-essential", "python3", "python3-pip", "python3-venv", "python3-dev",
+        "gcc", "g++", "make", "git", "curl", "wget", "ca-certificates"
+    ])
+    dry_run_installs: bool = Field(default=False, description="If true, do not actually install, only report commands")
+
+    allow_pip_installs: bool = Field(default=True, description="Allow installing pip packages via a dedicated tool")
+    pip_install_allowlist: List[str] = Field(default_factory=lambda: [])
+    create_venv_per_workspace: bool = Field(default=True)
+    venv_dir_name: str = Field(default=".venv")
+    pip_install_timeout_sec: int = Field(default=600)
     
     # OpenAI API settings
     api_key: str = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))

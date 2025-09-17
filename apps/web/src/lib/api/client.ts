@@ -354,6 +354,41 @@ class ApiClient {
     })
   }
 
+  // Admin AI user reply (multipart form)
+  async replyToAIRequest(params: {
+    stream_id: string
+    request_id: string
+    accepted: boolean
+    reason?: string
+    text?: string
+    file?: File | null
+  }) {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const url = `${baseUrl}/api/admin/ai/reply`
+    const form = new FormData()
+    form.append('stream_id', params.stream_id)
+    form.append('request_id', params.request_id)
+    form.append('accepted', String(params.accepted))
+    if (params.reason) form.append('reason', params.reason)
+    if (params.text) form.append('text', params.text)
+    if (params.file) form.append('file', params.file)
+
+    const headers: Record<string, string> = {}
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`
+
+    try {
+      const res = await fetch(url, { method: 'POST', headers, body: form })
+      const isJson = res.headers.get('content-type')?.includes('application/json')
+      const data = isJson ? await res.json() : await res.text()
+      if (!res.ok) {
+        return { error: { message: (data as any)?.detail || `HTTP ${res.status}`, status: res.status, details: data } }
+      }
+      return { data }
+    } catch (e: any) {
+      return { error: { message: e?.message || 'Network error', status: 0 } }
+    }
+  }
+
   // Admin Stats
   async getAdminStats() {
     return this.request('/api/admin/stats')

@@ -10,6 +10,7 @@ import boto3
 from botocore.config import Config
 
 from ..models.challenge import Challenge, Artifact, Hint, ArtifactKind, FlagType, ChallengeStatus
+from ..models.lab import LabTemplate, LabType
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -102,10 +103,24 @@ class ChallengeMaterializer:
             hints_created = await self._create_hints(challenge, workspace_path, agent_result)
             materialization_result["hints_created"] = hints_created
             
-            # 5. Update challenge status to PUBLISHED so it appears on frontend
+            # 5. Optionally detect and register a lab template (web service, etc.)
+            try:
+                # Prefer explicit lab spec in agent_result
+                lab_info = None
+                explicit_lab = agent_result.get("lab") if isinstance(agent_result, dict) else None
+                if isinstance(explicit_lab, dict):
+                    lab_info = await self._create_lab_from_spec(challenge, workspace_path, explicit_lab)
+                if not lab_info:
+                    lab_info = await self._maybe_create_lab_from_workspace(challenge, workspace_path, agent_result)
+                if lab_info:
+                    materialization_result["lab_template"] = lab_info
+            except Exception as e:
+                logger.warning(f"Lab detection/creation failed: {e}")
+
+            # 6. Update challenge status to PUBLISHED so it appears on frontend
             challenge.status = ChallengeStatus.PUBLISHED
             
-            # 6. List all files created for reference
+            # 7. List all files created for reference
             materialization_result["challenge_files"] = [
                 str(p.relative_to(workspace_path)) 
                 for p in workspace_path.rglob("*") 
@@ -122,6 +137,218 @@ class ChallengeMaterializer:
             raise
         
         return materialization_result
+
+    async def _create_lab_from_spec(self, challenge: Challenge, workspace_path: Path, lab_spec: Dict[str, Any]) -> Dict[str, Any] | None:
+        """Create a LabTemplate from an explicit agent-provided lab spec.
+
+        Supported shapes:
+        - type: "container" with dockerfile_dir and ports (list of ints)
+        - type: "compose" with compose_file (path relative to workspace root)
+        """
+        ltype = str(lab_spec.get("type", "")).lower()
+        if ltype not in ("container", "compose"):
+            return None
+
+        # Ensure S3 is available
+        if self.s3_client is None:
+            return None
+
+        if ltype == "container":
+            dockerfile_dir = lab_spec.get("dockerfile_dir") or "."
+            docker_dir = (workspace_path / dockerfile_dir).resolve()
+            try:
+                docker_dir.relative_to(workspace_path)
+            except Exception:
+                return None
+            if not (docker_dir / "Dockerfile").exists():
+                return None
+            ports = lab_spec.get("ports") or []
+            # Validate ports list
+            valid_ports: List[int] = []
+            for p in ports:
+                try:
+                    valid_ports.append(int(p))
+                except Exception:
+                    continue
+            if not valid_ports:
+                valid_ports = self._parse_exposed_ports(docker_dir / "Dockerfile") or [80]
+
+            # Upload build context
+            import io, tarfile
+            build_key = f"labs/{challenge.id}/build.tar.gz"
+            data = io.BytesIO()
+            with tarfile.open(fileobj=data, mode="w:gz") as tar:
+                for path in docker_dir.rglob("*"):
+                    if path.is_file():
+                        arcname = str(path.relative_to(docker_dir))
+                        tar.add(str(path), arcname=arcname)
+            data.seek(0)
+            self.s3_client.upload_fileobj(data, self.s3_bucket, build_key)
+
+            template = LabTemplate(
+                challenge_id=challenge.id,
+                name=lab_spec.get("name") or "Web Service",
+                type=LabType.CONTAINER,
+                docker_image=None,
+                compose_yaml_s3_key=None,
+                resource_limits=lab_spec.get("resource_limits") or {"memory": "512m", "cpus": 1},
+                network_config=lab_spec.get("network_config") or {"type": "isolated"},
+                startup_script=lab_spec.get("startup_script"),
+                ports_json=valid_ports,
+                env_json={**(lab_spec.get("env") or {}), "s3_build_context_key": build_key},
+                ttl_minutes=int(lab_spec.get("ttl_minutes") or 60),
+                max_retries=int(lab_spec.get("max_retries") or 3),
+                requires_gpu=bool(lab_spec.get("requires_gpu") or False),
+                requires_kasm=bool(lab_spec.get("requires_kasm") or False)
+            )
+            self.db.add(template)
+            self.db.flush()
+            return {"template_id": str(template.id), "ports": valid_ports, "build_key": build_key}
+
+        if ltype == "compose":
+            compose_path = lab_spec.get("compose_file") or "docker-compose.yml"
+            compose_abs = (workspace_path / compose_path).resolve()
+            try:
+                compose_abs.relative_to(workspace_path)
+            except Exception:
+                return None
+            if not compose_abs.exists():
+                return None
+            # Upload compose file
+            compose_key = f"labs/{challenge.id}/docker-compose.yml"
+            try:
+                self.s3_client.upload_file(str(compose_abs), self.s3_bucket, compose_key)
+            except Exception as e:
+                raise RuntimeError(f"Failed to upload compose file: {e}")
+            # Create template
+            template = LabTemplate(
+                challenge_id=challenge.id,
+                name=lab_spec.get("name") or "Web Service (Compose)",
+                type=LabType.CONTAINER,
+                docker_image=None,
+                compose_yaml_s3_key=compose_key,
+                resource_limits=lab_spec.get("resource_limits") or {"memory": "512m", "cpus": 1},
+                network_config=lab_spec.get("network_config") or {"type": "isolated"},
+                startup_script=lab_spec.get("startup_script"),
+                ports_json=lab_spec.get("ports") or None,
+                env_json=lab_spec.get("env") or {},
+                ttl_minutes=int(lab_spec.get("ttl_minutes") or 60),
+                max_retries=int(lab_spec.get("max_retries") or 3),
+                requires_gpu=bool(lab_spec.get("requires_gpu") or False),
+                requires_kasm=bool(lab_spec.get("requires_kasm") or False)
+            )
+            self.db.add(template)
+            self.db.flush()
+            return {"template_id": str(template.id), "compose_key": compose_key}
+
+        return None
+
+    async def _maybe_create_lab_from_workspace(self, challenge: Challenge, workspace_path: Path, agent_result: Dict[str, Any]) -> Dict[str, Any] | None:
+        """Detect a containerized web service and create a LabTemplate to host it.
+
+        Strategy:
+        - Prefer Dockerfile in workspace root or common subdirs (service/, web/).
+        - Parse EXPOSE to infer container ports; default to [80, 3000, 8000] if missing.
+        - Create a tar.gz build context and upload to S3.
+        - Create LabTemplate with env_json carrying s3_build_context_key, to be built by worker.
+        """
+        # Only proceed if S3 is available
+        if self.s3_client is None:
+            return None
+
+        candidate_dirs: List[Path] = [workspace_path, workspace_path / "service", workspace_path / "web"]
+        docker_dir: Path | None = None
+        for d in candidate_dirs:
+            if (d / "Dockerfile").exists():
+                docker_dir = d
+                break
+        if docker_dir is None:
+            return None
+
+        # Extract container ports from Dockerfile
+        ports = self._parse_exposed_ports(docker_dir / "Dockerfile")
+        if not ports:
+            # Reasonable defaults for common web stacks
+            ports = [80]
+
+        # Create build context tar.gz
+        import io
+        import tarfile
+        build_key = f"labs/{challenge.id}/build.tar.gz"
+        try:
+            data = io.BytesIO()
+            with tarfile.open(fileobj=data, mode="w:gz") as tar:
+                for path in docker_dir.rglob("*"):
+                    if path.is_file():
+                        arcname = str(path.relative_to(docker_dir))
+                        tar.add(str(path), arcname=arcname)
+            data.seek(0)
+            self.s3_client.upload_fileobj(data, self.s3_bucket, build_key)
+        except Exception as e:
+            raise RuntimeError(f"Failed to upload lab build context: {e}")
+
+        # Create LabTemplate record
+        template = LabTemplate(
+            challenge_id=challenge.id,
+            name="Web Service",
+            type=LabType.CONTAINER,
+            docker_image=None,
+            compose_yaml_s3_key=None,
+            resource_limits={"memory": "512m", "cpus": 1},
+            network_config={"type": "isolated"},
+            startup_script=None,
+            ports_json=ports,
+            env_json={"s3_build_context_key": build_key},
+            ttl_minutes=60,
+            max_retries=3,
+            requires_gpu=False,
+            requires_kasm=False
+        )
+        self.db.add(template)
+        self.db.flush()
+
+        logger.info(
+            "Created lab template for challenge",
+            extra={
+                "challenge_id": str(challenge.id),
+                "template_id": str(template.id),
+                "ports": ports,
+                "build_key": build_key
+            }
+        )
+        return {"template_id": str(template.id), "ports": ports, "build_key": build_key}
+
+    def _parse_exposed_ports(self, dockerfile_path: Path) -> List[int]:
+        ports: List[int] = []
+        try:
+            content = dockerfile_path.read_text(errors="ignore").splitlines()
+            for line in content:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.upper().startswith("EXPOSE "):
+                    try:
+                        parts = line.split(None, 1)[1]
+                    except Exception:
+                        continue
+                    for token in parts.split():
+                        token = token.strip()
+                        if "/" in token:
+                            token = token.split("/", 1)[0]
+                        try:
+                            ports.append(int(token))
+                        except Exception:
+                            continue
+        except Exception:
+            return ports
+        # Deduplicate while preserving order
+        seen = set()
+        unique_ports: List[int] = []
+        for p in ports:
+            if p not in seen:
+                seen.add(p)
+                unique_ports.append(p)
+        return unique_ports
     
     async def _process_artifacts(self, challenge: Challenge, workspace_path: Path) -> List[Dict[str, Any]]:
         """Find challenge artifacts and upload them to S3 (MinIO)."""

@@ -2,6 +2,7 @@ from celery import Celery
 import docker
 import json
 import structlog
+import os
 from datetime import datetime, timedelta
 
 logger = structlog.get_logger(__name__)
@@ -24,8 +25,8 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
         env = lab_template.get('env_json', {})
         env['CHALLENGE_INSTANCE_ID'] = challenge_instance_id
         
-        # Prepare port mappings
-        ports = lab_template.get('ports_json', {})
+        # Placeholder for port mappings; we'll prefer detecting from image EXPOSEd ports
+        ports = {}
         
         # Container labels for identification and cleanup
         labels = {
@@ -35,11 +36,72 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
             'cte.created': datetime.utcnow().isoformat()
         }
         
+        # If no prebuilt image provided, try to build from S3 context key
+        image_name = lab_template.get('docker_image')
+        if not image_name:
+            try:
+                s3_key = (lab_template.get('env_json') or {}).get('s3_build_context_key')
+                if s3_key:
+                    import boto3
+                    import tempfile
+                    import tarfile
+                    s3_client = boto3.client(
+                        's3',
+                        endpoint_url=os.getenv('S3_ENDPOINT', 'http://minio:9000'),
+                        aws_access_key_id=os.getenv('S3_ACCESS_KEY', 'minio'),
+                        aws_secret_access_key=os.getenv('S3_SECRET_KEY', 'minio123')
+                    )
+                    bucket = os.getenv('S3_BUCKET', 'cte-artifacts')
+                    with tempfile.TemporaryDirectory() as tmp:
+                        tar_path = os.path.join(tmp, 'build.tar.gz')
+                        with open(tar_path, 'wb') as f:
+                            s3_client.download_fileobj(bucket, s3_key, f)
+                        # Build image using tarball as context
+                        tag = f"cte-lab-{challenge_instance_id[:8]}"
+                        with open(tar_path, 'rb') as tf:
+                            image_obj, _ = client.images.build(
+                                fileobj=tf,
+                                custom_context=True,
+                                tag=tag,
+                                rm=True
+                            )
+                        image_name = tag
+                        # Detect EXPOSEd ports from built image
+                        try:
+                            exposed = image_obj.attrs.get('Config', {}).get('ExposedPorts') or image_obj.attrs.get('ContainerConfig', {}).get('ExposedPorts') or {}
+                            detected_ports = {}
+                            for key in exposed.keys():
+                                detected_ports[key] = None
+                            if detected_ports:
+                                ports = detected_ports
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.error("Failed to build lab image from S3 context", error=str(e))
+                image_name = None
+
+        # If image exists but no ports decided yet, detect EXPOSEd ports from image metadata
+        if image_name and not ports:
+            try:
+                img = client.images.get(image_name)
+                exposed = img.attrs.get('Config', {}).get('ExposedPorts') or img.attrs.get('ContainerConfig', {}).get('ExposedPorts') or {}
+                detected_ports = {}
+                for key in (exposed.keys() if isinstance(exposed, dict) else []):
+                    detected_ports[key] = None
+                if detected_ports:
+                    ports = detected_ports
+            except Exception:
+                pass
+
+        # If still no ports detected, default to 80/tcp for web services
+        if not ports:
+            ports = {"80/tcp": None}
+
         # Run container
-        if lab_template.get('docker_image'):
+        if image_name:
             # Single container mode
             container = client.containers.run(
-                lab_template['docker_image'],
+                image_name,
                 detach=True,
                 environment=env,
                 ports=ports,
@@ -49,11 +111,26 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
                 cpu_quota=100000,  # 1 CPU
                 restart_policy={'Name': 'unless-stopped'}
             )
-            
+            # Resolve actual published host ports and IP
+            try:
+                container.reload()
+            except Exception:
+                pass
+            try:
+                port_bindings = container.attrs.get('NetworkSettings', {}).get('Ports') or {}
+            except Exception:
+                port_bindings = {}
+            try:
+                ip_addr = container.attrs['NetworkSettings']['Networks']['lab-net']['IPAddress']
+            except Exception:
+                ip_addr = None
+
             result = {
                 'status': 'RUNNING',
                 'container_id': container.id,
-                'ports': ports
+                'container_name': container.name,
+                'ip_address': ip_addr,
+                'ports': port_bindings
             }
         
         elif lab_template.get('compose_yaml_s3_key'):
@@ -89,6 +166,9 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
                     lab.started_at = datetime.utcnow()
                     lab.expires_at = cleanup_at
                     lab.container_id = result.get('container_id') if isinstance(result, dict) else None
+                    lab.container_name = result.get('container_name') if isinstance(result, dict) else None
+                    lab.ip_address = result.get('ip_address') if isinstance(result, dict) else None
+                    lab.exposed_ports = result.get('ports') if isinstance(result, dict) else None
                     db.commit()
             finally:
                 db.close()
@@ -105,6 +185,23 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
         logger.error("Lab instance start failed",
                     error=str(e),
                     challenge_instance_id=challenge_instance_id)
+        # Update DB LabInstance to FAILED
+        try:
+            import os, sys
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            from apps.api.src.database import SessionLocal
+            from apps.api.src.models.lab import LabInstance, LabInstanceStatus
+            db = SessionLocal()
+            try:
+                lab = db.query(LabInstance).filter(LabInstance.challenge_instance_id == challenge_instance_id).order_by(LabInstance.created_at.desc()).first()
+                if lab:
+                    lab.status = LabInstanceStatus.FAILED
+                    lab.error_message = str(e)
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass
         return {
             'status': 'ERROR',
             'error': str(e)
@@ -323,7 +420,25 @@ def start_lab_compose(self, compose_yaml_s3_key: str, challenge_instance_id: str
                 text=True
             )
             
-            container_ids = containers_result.stdout.strip().split('\n')
+            container_ids = [c for c in containers_result.stdout.strip().split('\n') if c]
+
+            # Resolve published ports from docker inspect
+            import json as _json
+            published = {}
+            try:
+                for cid in container_ids:
+                    insp = subprocess.run(['docker', 'inspect', cid], capture_output=True, text=True)
+                    if insp.returncode == 0:
+                        info = _json.loads(insp.stdout)[0]
+                        ports = info.get('NetworkSettings', {}).get('Ports') or {}
+                        for k, v in (ports.items() if isinstance(ports, dict) else []):
+                            # merge bindings
+                            arr = published.get(k) or []
+                            if v:
+                                arr.extend(v)
+                            published[k] = arr
+            except Exception:
+                published = {}
             
             logger.info("Lab compose started",
                        challenge_instance_id=challenge_instance_id,
@@ -333,7 +448,8 @@ def start_lab_compose(self, compose_yaml_s3_key: str, challenge_instance_id: str
             return {
                 'status': 'RUNNING',
                 'project_name': project_name,
-                'container_ids': container_ids
+                'container_ids': container_ids,
+                'ports': published
             }
             
     except Exception as e:

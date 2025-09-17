@@ -6,7 +6,9 @@ import json
 import subprocess
 import tempfile
 import logging
-from typing import Dict, Any, List, Optional
+import shutil
+import shlex
+from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 
 from .config import AgentConfig
@@ -114,6 +116,85 @@ class ToolRegistry:
                 }
             }
         ]
+
+        # Conditionally expose install tools
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "install_system_packages",
+                "description": "Install system packages via apt-get/yum/apk with safety checks and optional dry-run",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "packages": {"type": "array", "items": {"type": "string"}},
+                        "manager": {"type": "string", "enum": ["apt-get", "yum", "apk"], "description": "Override package manager"},
+                        "update_index": {"type": "boolean", "default": True},
+                        "assume_yes": {"type": "boolean", "default": True},
+                        "extra_flags": {"type": "string", "description": "Extra flags to pass to the package manager"},
+                        "dry_run": {"type": "boolean", "description": "Return planned commands without executing"}
+                    },
+                    "required": ["packages"],
+                    "additionalProperties": False
+                }
+            }
+        })
+
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "install_pip_packages",
+                "description": "Install pip packages using per-workspace virtualenv; from list or requirements.txt",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "packages": {"type": "array", "items": {"type": "string"}, "description": "Package specifiers, e.g., fastapi==0.115.0"},
+                        "requirements_path": {"type": "string", "description": "Relative path to requirements.txt in workspace"},
+                        "upgrade": {"type": "boolean", "default": False},
+                        "index_url": {"type": "string"},
+                        "extra_index_urls": {"type": "array", "items": {"type": "string"}},
+                        "editable": {"type": "boolean", "default": False},
+                        "create_venv": {"type": "boolean", "description": "Create venv if missing (overrides config)"},
+                        "working_dir": {"type": "string", "description": "Working directory relative to workspace"},
+                        "dry_run": {"type": "boolean", "description": "Return planned command without executing"}
+                    },
+                    "additionalProperties": False
+                }
+            }
+        })
+
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "request_user_input",
+                "description": "Request input from the user (file or text). The agent will pause until the user responds.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {"type": "string", "description": "What to ask the user"},
+                        "kind": {"type": "string", "enum": ["file", "text"], "description": "Type of input requested"},
+                        "hint": {"type": "string", "description": "Optional hint to show the user"},
+                        "accept_mime": {"type": "array", "items": {"type": "string"}, "description": "Accepted MIME types for file"},
+                        "suggested_filename": {"type": "string", "description": "Suggested filename if creating a new file"},
+                        "context": {
+                            "type": "object",
+                            "description": "Additional context to help the user provide exactly what is needed",
+                            "properties": {
+                                "spec": {"type": "string", "description": "Exact specification (e.g., size, format, constraints)"},
+                                "format": {"type": "string", "description": "Expected format (e.g., png, jpg, json, csv)"},
+                                "dimensions": {"type": "string", "description": "Dimensions for images/media (e.g., 512x512)"},
+                                "example_text": {"type": "string", "description": "Short textual example of desired content"},
+                                "preview_b64": {"type": "string", "description": "Optional base64-encoded small preview (keep under 100KB)"},
+                                "preview_mime": {"type": "string", "description": "MIME type for preview_b64 (e.g., image/png)"},
+                                "notes": {"type": "string", "description": "Any additional notes or constraints"}
+                            },
+                            "additionalProperties": False
+                        }
+                    },
+                    "required": ["prompt", "kind"],
+                    "additionalProperties": False
+                }
+            }
+        })
         
         return tools
     
@@ -129,6 +210,10 @@ class ToolRegistry:
                 return self._execute_shell(**arguments)
             elif name == "list_files":
                 return self._list_files(**arguments)
+            elif name == "install_system_packages":
+                return self._install_system_packages(**arguments)
+            elif name == "install_pip_packages":
+                return self._install_pip_packages(**arguments)
             else:
                 logger.error(f"Unknown tool: {name}")
                 return {"error": f"Unknown tool: {name}"}
@@ -232,6 +317,15 @@ class ToolRegistry:
             work_path = self.workspace_root
         
         try:
+            # Auto-use workspace virtualenv if present
+            env = {**os.environ}
+            venv_bin, venv_path = self._get_workspace_venv_bin()
+            if venv_bin:
+                env["PATH"] = f"{venv_bin}:{env.get('PATH','')}"
+                env["VIRTUAL_ENV"] = str(venv_path)
+                env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+                env.setdefault("PYTHONUNBUFFERED", "1")
+
             result = subprocess.run(
                 command,
                 shell=True,
@@ -239,7 +333,7 @@ class ToolRegistry:
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minute timeout
-                env={**os.environ, "PWD": str(work_path)}
+                env={**env, "PWD": str(work_path)}
             )
             
             logger.info(f"Command completed - Return code: {result.returncode}")
@@ -317,3 +411,244 @@ class ToolRegistry:
             
         except Exception as e:
             return {"error": f"Failed to list directory: {str(e)}"}
+
+    # -------------------- Install tools --------------------
+    def _get_workspace_venv_bin(self) -> Tuple[Optional[str], Optional[Path]]:
+        """Return (bin_path, venv_path) for workspace venv if exists, else (None, None)."""
+        venv_dir = self.workspace_root / self.config.venv_dir_name
+        if venv_dir.exists() and venv_dir.is_dir():
+            bin_dir = venv_dir / ("Scripts" if os.name == "nt" else "bin")
+            if bin_dir.exists():
+                return str(bin_dir), venv_dir
+        return None, None
+
+    def _ensure_workspace_venv(self) -> Tuple[Optional[str], Optional[Path], Optional[str]]:
+        """Ensure a per-workspace venv exists if configured. Returns (bin_path, venv_path, error)."""
+        try:
+            venv_dir = self.workspace_root / self.config.venv_dir_name
+            if venv_dir.exists():
+                bin_dir = venv_dir / ("Scripts" if os.name == "nt" else "bin")
+                return (str(bin_dir) if bin_dir.exists() else None, venv_dir, None)
+            if not self.config.create_venv_per_workspace:
+                return None, None, None
+            # Create venv
+            python_exe = shutil.which("python3") or shutil.which("python")
+            if not python_exe:
+                return None, None, "No python interpreter found to create virtualenv"
+            venv_dir.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run([
+                python_exe, "-m", "venv", str(venv_dir)
+            ], capture_output=True, text=True)
+            if result.returncode != 0:
+                return None, None, f"Failed to create venv: {result.stderr[:300]}"
+            bin_dir = venv_dir / ("Scripts" if os.name == "nt" else "bin")
+            return (str(bin_dir) if bin_dir.exists() else None, venv_dir, None)
+        except Exception as e:
+            return None, None, str(e)
+
+    def _detect_package_manager(self, override: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Detect available package manager. Returns (manager, error)."""
+        candidates = []
+        if override:
+            candidates = [override]
+        else:
+            candidates = [self.config.system_package_manager, "apt-get", "yum", "apk"]
+        for cand in candidates:
+            if cand and shutil.which(cand):
+                return cand, None
+        return None, "No supported package manager found (apt-get/yum/apk)"
+
+    def _install_system_packages(
+        self,
+        packages: List[str],
+        manager: Optional[str] = None,
+        update_index: bool = True,
+        assume_yes: bool = True,
+        extra_flags: Optional[str] = None,
+        dry_run: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """Install system packages with safety checks."""
+        if not self.config.allow_system_installs:
+            return {"error": "System installs are disabled by configuration"}
+        if not packages:
+            return {"error": "No packages specified"}
+
+        # Normalize and validate package names
+        safe_pkgs: List[str] = []
+        for p in packages:
+            pkg = str(p).strip()
+            if not pkg:
+                continue
+            if not all(c.isalnum() or c in ".-+_[]<>=!,:;" for c in pkg):
+                return {"error": f"Invalid package name: {pkg}"}
+            safe_pkgs.append(pkg)
+        if not safe_pkgs:
+            return {"error": "No valid packages after validation"}
+
+        # Enforce allowlist if configured
+        if self.config.system_install_allowlist:
+            not_allowed = [p for p in safe_pkgs if p not in self.config.system_install_allowlist]
+            if not_allowed:
+                return {"error": f"Packages not allowed by allowlist: {', '.join(not_allowed)}"}
+
+        mgr, err = self._detect_package_manager(manager)
+        if err:
+            return {"error": err}
+
+        flags = extra_flags or ""
+        commands: List[str] = []
+        if mgr == "apt-get":
+            if update_index:
+                commands.append("apt-get update")
+            install_cmd = f"apt-get install{' -y' if assume_yes else ''} {flags} " + " ".join(shlex.quote(p) for p in safe_pkgs)
+            commands.append(install_cmd)
+        elif mgr == "yum":
+            if update_index:
+                commands.append(f"yum makecache{' -y' if assume_yes else ''}")
+            install_cmd = f"yum install{' -y' if assume_yes else ''} {flags} " + " ".join(shlex.quote(p) for p in safe_pkgs)
+            commands.append(install_cmd)
+        elif mgr == "apk":
+            if update_index:
+                commands.append("apk update")
+            install_cmd = f"apk add --no-cache {flags} " + " ".join(shlex.quote(p) for p in safe_pkgs)
+            commands.append(install_cmd)
+        else:
+            return {"error": f"Unsupported package manager: {mgr}"}
+
+        do_dry = self.config.dry_run_installs or bool(dry_run)
+        if do_dry:
+            return {
+                "success": True,
+                "dry_run": True,
+                "manager": mgr,
+                "planned_commands": commands
+            }
+
+        stdouts: List[str] = []
+        stderrs: List[str] = []
+        codes: List[int] = []
+        for cmd in commands:
+            logger.info(f"System install running: {cmd}")
+            proc = subprocess.run(cmd, shell=True, text=True, capture_output=True, cwd=str(self.workspace_root))
+            stdouts.append(proc.stdout[:10000])
+            stderrs.append(proc.stderr[:10000])
+            codes.append(proc.returncode)
+            if proc.returncode != 0:
+                break
+
+        return {
+            "success": all(c == 0 for c in codes),
+            "manager": mgr,
+            "commands": commands,
+            "returncodes": codes,
+            "stdout": "\n".join(stdouts)[:20000],
+            "stderr": "\n".join(stderrs)[:20000],
+        }
+
+    def _install_pip_packages(
+        self,
+        packages: Optional[List[str]] = None,
+        requirements_path: Optional[str] = None,
+        upgrade: bool = False,
+        index_url: Optional[str] = None,
+        extra_index_urls: Optional[List[str]] = None,
+        editable: bool = False,
+        create_venv: Optional[bool] = None,
+        working_dir: Optional[str] = None,
+        dry_run: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """Install pip packages in a per-workspace virtualenv."""
+        if not self.config.allow_pip_installs:
+            return {"error": "Pip installs are disabled by configuration"}
+
+        if not packages and not requirements_path:
+            return {"error": "Provide either 'packages' or 'requirements_path'"}
+
+        work_path = self._validate_path(working_dir) if working_dir else self.workspace_root
+
+        # Ensure or locate venv
+        ensure = self.config.create_venv_per_workspace if create_venv is None else create_venv
+        venv_bin, venv_path, venv_err = (None, None, None)
+        if ensure:
+            venv_bin, venv_path, venv_err = self._ensure_workspace_venv()
+            if venv_err:
+                return {"error": venv_err}
+        else:
+            venv_bin, venv_path = self._get_workspace_venv_bin()
+
+        # Determine python/pip executables
+        if venv_bin:
+            python_exe = str(Path(venv_bin) / ("python.exe" if os.name == "nt" else "python"))
+            pip_cmd = [python_exe, "-m", "pip"]
+        else:
+            # No venv; fallback to system pip
+            python_exe = shutil.which("python3") or shutil.which("python")
+            if not python_exe:
+                return {"error": "No python interpreter found to run pip"}
+            pip_cmd = [python_exe, "-m", "pip"]
+
+        args: List[str] = []
+        if requirements_path:
+            req_path = self._validate_path(requirements_path)
+            if not req_path.exists() or not req_path.is_file():
+                return {"error": f"requirements file not found: {requirements_path}"}
+            args = ["install", "-r", str(req_path)]
+        else:
+            safe_packages: List[str] = []
+            for spec in packages or []:
+                s = str(spec).strip()
+                if not s:
+                    continue
+                if not all(c.isalnum() or c in ".-+_[]<>=!,:;@/" for c in s):
+                    return {"error": f"Invalid package specifier: {s}"}
+                safe_packages.append(s)
+            if not safe_packages:
+                return {"error": "No valid package specifiers"}
+            # Allowlist enforcement if configured
+            if self.config.pip_install_allowlist:
+                not_allowed = [p for p in safe_packages if p.split("==")[0] not in self.config.pip_install_allowlist]
+                if not_allowed:
+                    return {"error": f"Packages not allowed by allowlist: {', '.join(not_allowed)}"}
+            args = ["install"] + (["-e"] if editable else []) + safe_packages
+
+        if upgrade:
+            args.append("--upgrade")
+        if index_url:
+            args += ["--index-url", index_url]
+        for url in (extra_index_urls or []):
+            args += ["--extra-index-url", url]
+
+        planned_cmd_str = " ".join(shlex.quote(a) for a in (pip_cmd + args))
+        do_dry = self.config.dry_run_installs or bool(dry_run)
+        if do_dry:
+            return {
+                "success": True,
+                "dry_run": True,
+                "venv": str(venv_path) if venv_path else None,
+                "planned_command": planned_cmd_str
+            }
+
+        env = {**os.environ}
+        if venv_bin and venv_path:
+            env["PATH"] = f"{venv_bin}:{env.get('PATH','')}"
+            env["VIRTUAL_ENV"] = str(venv_path)
+        env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+        env.setdefault("PYTHONUNBUFFERED", "1")
+
+        proc = subprocess.run(
+            pip_cmd + args,
+            cwd=str(work_path),
+            capture_output=True,
+            text=True,
+            timeout=self.config.pip_install_timeout_sec,
+            env=env
+        )
+
+        return {
+            "success": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "stdout": proc.stdout[:20000],
+            "stderr": proc.stderr[:20000],
+            "venv": str(venv_path) if venv_path else None,
+            "used_command": planned_cmd_str
+        }

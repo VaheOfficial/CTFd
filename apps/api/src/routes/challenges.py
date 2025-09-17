@@ -5,7 +5,7 @@ from typing import Optional, List
 import os
 import uuid
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ..database import get_db
 from ..models.user import User, UserRole
@@ -18,6 +18,13 @@ from ..utils.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# Celery client for dispatching tasks to worker without importing worker modules
+try:
+    from celery import Celery
+    celery_app = Celery('cte-api', broker=os.getenv('REDIS_URL', 'redis://redis:6379/0'))
+except Exception:
+    celery_app = None
 
 
 
@@ -50,6 +57,8 @@ class LabStatusResponse(BaseModel):
     expires_at: Optional[datetime]
     kasm_url: Optional[str]
     vpn_config: Optional[str]
+    exposed_ports: Optional[dict]
+    service_urls: Optional[list]
 
 
 @router.get("/challenges", response_model=List[ChallengeResponse])
@@ -324,7 +333,9 @@ async def get_lab_status(
             started_at=None,
             expires_at=None,
             kasm_url=None,
-            vpn_config=None
+            vpn_config=None,
+            exposed_ports=None,
+            service_urls=[]
         )
     
     # Resolve Kasm URL from environment if configured (best-effort)
@@ -337,13 +348,35 @@ async def get_lab_status(
         kasm_url = f"https://kasm.example.com/session/{lab_instance.id}"
         vpn_config = "# WireGuard config would be here"
     
+    # Build externally reachable URLs for exposed ports
+    # Expect lab_instance.exposed_ports in Docker API format: {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}], ...}
+    service_urls: list = []
+    try:
+        # Host for access: prefer DOMAIN env when caddy is publishing 80/443, else use localhost
+        host = os.getenv('DOMAIN', 'localhost')
+        port_map = lab_instance.exposed_ports or {}
+        for cport, bindings in (port_map.items() if isinstance(port_map, dict) else []):
+            if not bindings:
+                continue
+            for b in bindings:
+                hp = b.get('HostPort')
+                if hp:
+                    # Assume HTTP for common ports
+                    proto = 'http'
+                    if cport.endswith('/tcp'):
+                        service_urls.append(f"{proto}://{host}:{hp}")
+    except Exception:
+        pass
+
     return LabStatusResponse(
         instance_id=instance_id,
         status=lab_instance.status,
         started_at=lab_instance.started_at,
         expires_at=lab_instance.expires_at,
         kasm_url=kasm_url,
-        vpn_config=vpn_config
+        vpn_config=vpn_config,
+        exposed_ports=lab_instance.exposed_ports,
+        service_urls=service_urls
     )
 
 @router.post("/instances/{instance_id}/lab/start")
@@ -377,23 +410,31 @@ async def start_lab_instance(
             detail="No lab available for this challenge"
         )
     
-    # Check if already running
+    # Check if already running or starting recently
     existing_lab = db.query(LabInstance).filter(
         LabInstance.challenge_instance_id == instance_id,
         LabInstance.status.in_([LabInstanceStatus.STARTING, LabInstanceStatus.RUNNING])
-    ).first()
+    ).order_by(LabInstance.created_at.desc()).first()
     
     if existing_lab:
-        return {
-            "message": "Lab already running",
-            "instance_id": instance_id,
-            "status": existing_lab.status
-        }
+        # Allow retry if stuck in STARTING for more than 30 seconds
+        now_utc = datetime.now(timezone.utc)
+        if (
+            existing_lab.status == LabInstanceStatus.STARTING
+            and existing_lab.created_at
+            and (now_utc - existing_lab.created_at).total_seconds() > 30
+        ):
+            existing_lab.status = LabInstanceStatus.FAILED
+            existing_lab.error_message = "Startup timeout; retrying"
+            db.commit()
+        else:
+            return {
+                "message": "Lab already running",
+                "instance_id": instance_id,
+                "status": existing_lab.status
+            }
     
     try:
-        # Import and enqueue lab start task
-        from ...worker.tasks.labs import start_lab_instance as start_lab_task
-        
         # Create lab instance record
         lab_instance = LabInstance(
             lab_template_id=lab_template.id,
@@ -406,27 +447,33 @@ async def start_lab_instance(
         db.commit()
         db.refresh(lab_instance)
         
-        # Enqueue start task
-        task = start_lab_task.delay({
-            "id": str(lab_template.id),
-            "challenge_id": str(challenge_instance.challenge_id),
-            "docker_image": lab_template.docker_image,
-            "compose_yaml_s3_key": lab_template.compose_yaml_s3_key,
-            "ports_json": lab_template.ports_json,
-            "env_json": lab_template.env_json,
-            "ttl_minutes": lab_template.ttl_minutes
-        }, instance_id)
+        # Enqueue start task via Celery (by name), avoiding importing worker code in API container
+        task = None
+        if celery_app is None:
+            raise RuntimeError("Celery client not initialized")
+        task = celery_app.send_task(
+            'tasks.labs.start_lab_instance',
+            args=[{
+                "id": str(lab_template.id),
+                "challenge_id": str(challenge_instance.challenge_id),
+                "docker_image": lab_template.docker_image,
+                "compose_yaml_s3_key": lab_template.compose_yaml_s3_key,
+                "ports_json": lab_template.ports_json,
+                "env_json": lab_template.env_json,
+                "ttl_minutes": lab_template.ttl_minutes
+            }, instance_id]
+        )
         
         logger.info("Lab start requested",
                    instance_id=instance_id,
                    lab_instance_id=str(lab_instance.id),
-                   task_id=task.id)
+                   task_id=(task.id if task else None))
         
         return {
             "message": "Lab starting",
             "instance_id": instance_id,
             "lab_instance_id": str(lab_instance.id),
-            "task_id": task.id,
+            "task_id": (task.id if task else None),
             "status": "starting"
         }
         
@@ -472,15 +519,15 @@ async def stop_lab_instance(
         )
     
     try:
-        # Import and enqueue stop task
-        from ...worker.tasks.labs import stop_lab_instance as stop_lab_task
-        
         # Update status
         lab_instance.status = LabInstanceStatus.STOPPING
         db.commit()
         
-        # Enqueue stop task
-        task = stop_lab_task.delay(lab_instance.container_id or "")
+        # Enqueue stop task by name
+        task = None
+        if celery_app is None:
+            raise RuntimeError("Celery client not initialized")
+        task = celery_app.send_task('tasks.labs.stop_lab_instance', args=[lab_instance.container_id or ""]) 
         
         logger.info("Lab stop requested",
                    instance_id=instance_id,

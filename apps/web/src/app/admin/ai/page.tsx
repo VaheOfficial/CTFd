@@ -103,6 +103,12 @@ export default function AdminAIPage() {
   const lastShowStartRef = useRef<number>(0)
   const pendingShowRef = useRef<ToolShowcase | null>(null)
   const showTimerRef = useRef<number | null>(null)
+  const [streamId, setStreamId] = useState<string | null>(null)
+
+  // User request state (surfaced inside tool overlay instead of separate modal)
+  const [userReq, setUserReq] = useState<{ request_id: string; prompt: string; kind: 'file'|'text'; hint?: string; accept_mime?: string[]; suggested_filename?: string; context?: any } | null>(null)
+  const [userReqText, setUserReqText] = useState('')
+  const [userReqFile, setUserReqFile] = useState<File | null>(null)
 
   const scheduleShowcase = (sc: ToolShowcase) => {
     if (!toolShowcase) {
@@ -587,7 +593,7 @@ export default function AdminAIPage() {
             const dataStr = line.slice(6)
             
             try {
-              const data = JSON.parse(dataStr)
+            const data = JSON.parse(dataStr)
               // Minimal event log
               addLog(`🎯 ${data.type}${data.message ? ` - ${data.message}` : ''}`, 'success')
               
@@ -597,7 +603,12 @@ export default function AdminAIPage() {
                   updateNode('init', { status: 'active', details: data.message })
                   setPhase('init')
                   setHudMessage(data.message || 'Initializing...')
+                  if (data.stream_id) setStreamId(data.stream_id)
                   addLog(`🤖 ${data.message}`, 'info')
+                  break
+                case 'start':
+                  if (data.challenge_id) setResult({ challenge_id: data.challenge_id })
+                  if (data.workspace) addLog(`🗂️ Workspace: ${data.workspace}`, 'info')
                   break
                 case 'plan':
                   updateNode('init', { status: 'complete' })
@@ -667,6 +678,21 @@ export default function AdminAIPage() {
                     stderr: data.stderr,
                     success: !!data.success
                   })
+                  break
+                case 'user_request':
+                  setUserReq({
+                    request_id: data.request_id,
+                    prompt: data.prompt,
+                    kind: (data.kind === 'file' ? 'file' : 'text'),
+                    hint: data.hint,
+                    accept_mime: data.accept_mime,
+                    suggested_filename: data.suggested_filename,
+                    context: data.context
+                  })
+                  setUserReqText('')
+                  setUserReqFile(null)
+                  setHudMessage('Awaiting your input...')
+                  addLog(`📥 User input requested: ${data.prompt}`, 'info')
                   break
                 case 'verify':
                   updateNode('build', { status: 'complete' })
@@ -964,11 +990,78 @@ export default function AdminAIPage() {
                             </div>
                           )}
                           {toolShowcase.kind === 'generic' && (
-                            <pre className="code-font text-xs whitespace-pre-wrap break-words rounded-lg border border-border bg-background/60 p-3">{JSON.stringify({ args: toolShowcase.args, stdout: toolShowcase.stdout, stderr: toolShowcase.stderr }, null, 2)}</pre>
+                            <div className="space-y-4">
+                              {/* If this is a user_request, show an embedded responder */}
+                              {userReq ? (
+                                <div className="space-y-3">
+                                  <div className="text-sm font-medium">{userReq.prompt}</div>
+                                  {userReq.hint && <div className="text-xs text-muted-foreground italic">Hint: {userReq.hint}</div>}
+                                  {/* Context rendering */}
+                                  {userReq.context && (
+                                    <div className="rounded-lg border border-border bg-background/60 p-3">
+                                      <div className="text-xs text-muted-foreground mb-2">Context</div>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                        {userReq.context.spec && <div><span className="text-muted-foreground">Spec:</span> {userReq.context.spec}</div>}
+                                        {userReq.context.format && <div><span className="text-muted-foreground">Format:</span> {userReq.context.format}</div>}
+                                        {userReq.context.dimensions && <div><span className="text-muted-foreground">Dimensions:</span> {userReq.context.dimensions}</div>}
+                                        {userReq.context.notes && <div className="md:col-span-2"><span className="text-muted-foreground">Notes:</span> {userReq.context.notes}</div>}
+                                      </div>
+                                      {userReq.context.preview_b64 && userReq.context.preview_mime && (
+                                        <div className="mt-3">
+                                          <div className="text-xs text-muted-foreground mb-1">Preview</div>
+                                          <img className="max-h-48 rounded border border-border" src={`data:${userReq.context.preview_mime};base64,${userReq.context.preview_b64}`} alt="preview" />
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  {userReq.kind === 'text' && (
+                                    <Textarea value={userReqText} onChange={(e) => setUserReqText(e.target.value)} placeholder="Enter your response..." />
+                                  )}
+                                  {userReq.kind === 'file' && (
+                                    <div className="space-y-2">
+                                      <Input type="file" accept={(userReq.accept_mime||[]).join(',')} onChange={(e) => setUserReqFile(e.target.files?.[0] || null)} />
+                                      {userReqFile && <div className="text-xs text-muted-foreground">Selected: {userReqFile.name} ({Math.round(userReqFile.size/1024)} KB)</div>}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <pre className="code-font text-xs whitespace-pre-wrap break-words rounded-lg border border-border bg-background/60 p-3">{JSON.stringify({ args: toolShowcase.args, stdout: toolShowcase.stdout, stderr: toolShowcase.stderr }, null, 2)}</pre>
+                              )}
+                            </div>
                           )}
                         </div>
                         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-background/80">
-                          <Button variant="outline" onClick={() => setToolShowcase(null)}>Close</Button>
+                          {userReq ? (
+                            <>
+                              <Button variant="destructive" onClick={async () => {
+                                if (!streamId || !userReq) return
+                                await apiClient.replyToAIRequest({ stream_id: streamId, request_id: userReq.request_id, accepted: false, reason: 'User denied' })
+                                addLog('🚫 You denied the request', 'warning')
+                                setUserReq(null)
+                                setToolShowcase(null)
+                              }}>Deny</Button>
+                              <Button onClick={async () => {
+                                if (!streamId || !userReq) return
+                                if (userReq.kind === 'file' && !userReqFile) return
+                                const res = await apiClient.replyToAIRequest({
+                                  stream_id: streamId,
+                                  request_id: userReq.request_id,
+                                  accepted: true,
+                                  text: userReq.kind === 'text' ? userReqText : undefined,
+                                  file: userReq.kind === 'file' ? userReqFile : null
+                                })
+                                if (res.error) {
+                                  addLog(`❌ Failed to send reply: ${res.error.message}`, 'error')
+                                } else {
+                                  addLog('📨 Reply sent to agent', 'success')
+                                  setUserReq(null)
+                                  setToolShowcase(null)
+                                }
+                              }}>Submit</Button>
+                            </>
+                          ) : (
+                            <Button variant="outline" onClick={() => setToolShowcase(null)}>Close</Button>
+                          )}
                         </div>
                       </motion.div>
                     </motion.div>
@@ -1023,6 +1116,7 @@ export default function AdminAIPage() {
                         <Button variant="outline" onClick={() => { setCinematic(false); setIsRunning(false); }}>Create Another</Button>
                       </div>
                     )}
+                    {/* Removed separate modal trigger; handled inside tool overlay */}
                   </div>
                 </div>
                 )}
@@ -1066,6 +1160,8 @@ export default function AdminAIPage() {
         </CardContent>
       </Card>
       )}
+      {/* User request modal */}
+      {/* Removed separate user request modal; responses handled in tool overlay */}
     </div>
   )
 }

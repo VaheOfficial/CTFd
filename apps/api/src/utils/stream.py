@@ -20,6 +20,7 @@ class GenerationStreamManager:
         self._connections: Dict[str, Set[WebSocket]] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
         self._incoming: Dict[str, asyncio.Queue] = {}
+        self._control: Dict[str, asyncio.Queue] = {}
         self._meta: Dict[str, Dict[str, Any]] = {}
         # Optional Redis backend for cross-process streaming
         self._redis = None
@@ -121,6 +122,49 @@ class GenerationStreamManager:
                 # fall through to in-process
         # Fallback to in-process queue
         q = self._incoming.get(stream_id)
+        if not q:
+            return None
+        if timeout_sec and timeout_sec > 0:
+            try:
+                return await asyncio.wait_for(q.get(), timeout=timeout_sec)
+            except asyncio.TimeoutError:
+                return None
+        try:
+            return q.get_nowait()
+        except asyncio.QueueEmpty:
+            return None
+
+    async def submit_control(self, stream_id: str, data: Dict[str, Any]) -> None:
+        # Prefer Redis list if available
+        if self._redis is not None:
+            try:
+                self._redis.rpush(f"ai:control:{stream_id}", json.dumps(data))
+                return
+            except Exception as e:
+                logger.warning("Redis rpush failed for control stream", stream_id=stream_id, error=str(e))
+        # Fallback to in-process queue
+        async with self._get_lock(stream_id):
+            if stream_id not in self._control:
+                self._control[stream_id] = asyncio.Queue()
+            await self._control[stream_id].put(data)
+
+    async def get_next_control(self, stream_id: str, timeout_sec: float = 0.0) -> Optional[Dict[str, Any]]:
+        # Prefer Redis list if available
+        if self._redis is not None:
+            try:
+                timeout = max(1, int(timeout_sec)) if timeout_sec else 1
+                result = await asyncio.to_thread(self._redis.blpop, f"ai:control:{stream_id}", timeout)
+                if result is None:
+                    return None
+                _, value = result
+                try:
+                    return json.loads(value)
+                except Exception:
+                    return {"type": "control", "data": value.decode() if isinstance(value, (bytes, bytearray)) else str(value)}
+            except Exception as e:
+                logger.warning("Redis blpop failed for control stream", stream_id=stream_id, error=str(e))
+        # Fallback to in-process queue
+        q = self._control.get(stream_id)
         if not q:
             return None
         if timeout_sec and timeout_sec > 0:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -278,6 +278,67 @@ async def get_generation_status(
     # This would return events from the stream manager
     # For now, return empty - the frontend will simulate
     return {"stream_id": stream_id, "events": [], "status": "running"}
+
+
+@router.post("/reply")
+async def reply_to_user_request(
+    stream_id: str = Form(...),
+    request_id: str = Form(...),
+    accepted: bool = Form(...),
+    reason: Optional[str] = Form(None),
+    text: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    current_user: User = Depends(require_author)
+):
+    """Receive a user response (provide or deny) for an AI user request. Supports optional file upload."""
+    try:
+        workspace = stream_manager.get_meta(stream_id, 'workspace')
+        if not workspace:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown stream or workspace not set")
+
+        file_rel_path = None
+        if accepted and file is not None:
+            # Save file into workspace under user_uploads/<request_id>/
+            upload_dir = os.path.join(workspace, 'user_uploads', request_id)
+            os.makedirs(upload_dir, exist_ok=True)
+            filename = file.filename or 'upload.bin'
+            safe_name = filename.replace('..', '_').replace('/', '_')
+            dest_path = os.path.join(upload_dir, safe_name)
+            with open(dest_path, 'wb') as out:
+                out.write(await file.read())
+            file_rel_path = os.path.relpath(dest_path, workspace)
+
+        # Push control event for orchestrator to resume
+        await stream_manager.submit_control(stream_id, {
+            'type': 'user_response',
+            'request_id': request_id,
+            'accepted': bool(accepted),
+            'reason': reason,
+            'text': text,
+            'file_rel_path': file_rel_path
+        })
+
+        # Optionally notify UI that reply was received
+        try:
+            await stream_manager.publish(stream_id, {
+                'type': 'user_response_ack',
+                'request_id': request_id,
+                'accepted': bool(accepted)
+            })
+        except Exception:
+            pass
+
+        return {
+            'ok': True,
+            'request_id': request_id,
+            'accepted': bool(accepted),
+            'file_rel_path': file_rel_path
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Reply handling failed", error=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/materialize/{challenge_id}")
 async def materialize_challenge(
