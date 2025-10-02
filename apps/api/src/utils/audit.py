@@ -48,3 +48,6 @@ def log_audit(
         db.commit()
 
 
+# Alias for backwards compatibility
+create_audit_log = log_audit
+

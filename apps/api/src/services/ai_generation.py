@@ -70,7 +70,7 @@ class AIGenerationService:
                 points_base=self._calculate_points(request.difficulty),
                 time_cap_minutes=self._calculate_time_cap(request.difficulty),
                 mode=ChallengeMode.SOLO,
-                status=ChallengeStatus.DRAFT,  # Will be updated to PUBLISHED after materialization
+                status=ChallengeStatus.DRAFT,  # Will be updated to READY after materialization (admin must manually publish)
                 author_id=user.id,
                 description=(ai_description.strip() if isinstance(ai_description, str) else '')
             )

@@ -294,6 +294,10 @@ class ApiClient {
     })
   }
 
+  async getAdminChallenge(challengeId: string) {
+    return this.request(`/api/admin/challenges/${challengeId}`)
+  }
+
   async updateChallenge(challengeId: string, updates: any) {
     return this.request(`/api/admin/challenges/${challengeId}`, {
       method: 'PATCH',
@@ -416,6 +420,13 @@ class ApiClient {
 
   async getSeason(seasonId: string) {
     return this.request(`/api/seasons/${seasonId}`)
+  }
+
+  async updateSeason(seasonId: string, updates: any) {
+    return this.request(`/api/seasons/${seasonId}`, {
+      method: 'PATCH',
+      body: updates,
+    })
   }
 
   // Two-Factor Authentication

@@ -2,9 +2,14 @@ from celery import Celery
 import docker
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 import structlog
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from docker_client import get_docker_client
 
 logger = structlog.get_logger(__name__)
 
@@ -20,7 +25,8 @@ def run_validator_container(self, validator_config: dict, submission_data: dict)
         submission_data: Contains flag, user_id, challenge_id, dynamic_seed
     """
     try:
-        client = docker.from_env()
+        # Use helper to get properly configured Docker client
+        client = get_docker_client()
         
         # Create temporary directory for input/output
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useChallenge, useChallengeInstance, useSubmitFlag, useConsumeHint, useStartLabInstance, useStopLabInstance } from '@/lib/api/hooks'
+import { useChallenge, useChallengeInstance, useSubmitFlag, useConsumeHint, useStartLabInstance, useStopLabInstance, useLabStatus } from '@/lib/api/hooks'
 import { formatTime, formatPoints, getDifficultyVariant, getTrackColor } from '@/lib/utils'
 import { ErrorBoundary } from '@/components/shared/error-boundary'
 import { 
@@ -38,9 +38,16 @@ export default function ChallengePage() {
   const slug = params.slug as string
   
   const { data: challenge, isLoading, error } = useChallenge(slug)
-  const createInstanceMutation = useChallengeInstance(challenge?.id || '')
-  const submitFlagMutation = useSubmitFlag(challenge?.id || '')
-  const consumeHintMutation = useConsumeHint(challenge?.id || '')
+  const [instanceId, setInstanceId] = useState<string | null>(null)
+  
+  const createInstanceMutation = useChallengeInstance((challenge as any)?.id || '')
+  const submitFlagMutation = useSubmitFlag((challenge as any)?.id || '')
+  const consumeHintMutation = useConsumeHint((challenge as any)?.id || '')
+  const startLabMutation = useStartLabInstance()
+  const stopLabMutation = useStopLabInstance()
+  
+  // Poll lab status when instance exists
+  const { data: labStatus } = useLabStatus(instanceId || '')
   
   const [flagInput, setFlagInput] = useState('')
   const [showHints, setShowHints] = useState(false)
@@ -48,9 +55,6 @@ export default function ChallengePage() {
   const [submissionHistory, setSubmissionHistory] = useState<any[]>([])
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
-  const [instanceId, setInstanceId] = useState<string | null>(null)
-  const startLabMutation = useStartLabInstance()
-  const stopLabMutation = useStopLabInstance()
 
   const handleSubmitFlag = async () => {
     if (!flagInput.trim() || !challenge) return
@@ -80,11 +84,20 @@ export default function ChallengePage() {
     }
   }
 
+  // Set instance ID from challenge data when it loads
+  useEffect(() => {
+    if (challenge && (challenge as any).instance_id) {
+      setInstanceId((challenge as any).instance_id)
+    }
+  }, [challenge])
+
   // Timer effect for time-capped challenges
   useEffect(() => {
-    if (challenge?.time_cap_minutes && challenge?.started_at) {
-      const startTime = new Date(challenge.started_at).getTime()
-      const timeLimit = challenge.time_cap_minutes * 60 * 1000
+    if (!challenge) return
+    
+    if ((challenge as any).time_cap_minutes && (challenge as any).started_at) {
+      const startTime = new Date((challenge as any).started_at).getTime()
+      const timeLimit = (challenge as any).time_cap_minutes * 60 * 1000
       
       const timer = setInterval(() => {
         const now = Date.now()
@@ -199,19 +212,19 @@ export default function ChallengePage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">{challenge.title}</h1>
+          <h1 className="text-3xl font-bold text-foreground">{(challenge as any)?.title}</h1>
           <div className="flex flex-wrap gap-2 mt-2">
             <Badge variant="outline" style={{ 
-              backgroundColor: `${getTrackColor(challenge.track)}20`, 
-              borderColor: getTrackColor(challenge.track), 
-              color: getTrackColor(challenge.track) 
+              backgroundColor: `${getTrackColor((challenge as any)?.track)}20`, 
+              borderColor: getTrackColor((challenge as any)?.track), 
+              color: getTrackColor((challenge as any)?.track) 
             }}>
-              {challenge.track.toUpperCase()}
+              {(challenge as any)?.track?.toUpperCase()}
             </Badge>
-            <Badge variant={getDifficultyVariant(challenge.difficulty)}>
-              {challenge.difficulty.toUpperCase()}
+            <Badge variant={getDifficultyVariant((challenge as any)?.difficulty)}>
+              {(challenge as any)?.difficulty?.toUpperCase()}
             </Badge>
-            {challenge.has_lab && (
+            {(challenge as any)?.has_lab && (
               <Badge variant="secondary">LAB AVAILABLE</Badge>
             )}
           </div>
@@ -219,11 +232,11 @@ export default function ChallengePage() {
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <Trophy className="h-4 w-4 text-brand" />
-            <span>{formatPoints(challenge.points_base)} points</span>
+            <span>{formatPoints((challenge as any)?.points_base)} points</span>
           </div>
           <div className="flex items-center gap-1">
             <Clock className="h-4 w-4" />
-            <span>{formatTime(challenge.time_cap_minutes)} time cap</span>
+            <span>{formatTime((challenge as any)?.time_cap_minutes)} time cap</span>
           </div>
         </div>
       </div>
@@ -243,18 +256,98 @@ export default function ChallengePage() {
             <CardContent>
               <div className="prose prose-invert max-w-none">
                 <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {challenge.description}
+                  {(challenge as any)?.description}
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Lab Environment */}
+          {(challenge as any)?.has_lab && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Server className="h-5 w-5 text-brand" />
+                  Lab Environment
+                </CardTitle>
+                <CardDescription>
+                  Deploy an isolated instance for hands-on analysis
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1" 
+                    onClick={handleStartLab} 
+                    disabled={startLabMutation.isPending || labStatus?.status === 'running' || labStatus?.status === 'starting'}
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    {startLabMutation.isPending || labStatus?.status === 'starting' ? 'Starting...' : 'Start Lab'}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="flex-1" 
+                    onClick={handleStopLab} 
+                    disabled={stopLabMutation.isPending || !labStatus || labStatus?.status !== 'running'}
+                  >
+                    <Square className="h-4 w-4 mr-2" />
+                    {stopLabMutation.isPending ? 'Stopping...' : 'Stop Lab'}
+                  </Button>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Status</span>
+                    <Badge variant={
+                      labStatus?.status === 'running' ? 'default' : 
+                      labStatus?.status === 'starting' ? 'secondary' :
+                      labStatus?.status === 'failed' ? 'destructive' :
+                      'outline'
+                    }>
+                      {labStatus?.status === 'running' ? '🟢 Running' :
+                       labStatus?.status === 'starting' ? '🟡 Starting' :
+                       labStatus?.status === 'failed' ? '🔴 Failed' :
+                       '⚪ Not Started'}
+                    </Badge>
+                  </div>
+                  
+                  {labStatus?.expires_at && labStatus?.status === 'running' && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Expires</span>
+                      <span className="text-sm font-mono">
+                        {new Date(labStatus.expires_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {labStatus?.status === 'running' && (labStatus as any)?.service_urls && (labStatus as any).service_urls.length > 0 && (
+                    <div className="pt-2 border-t border-slate-700">
+                      <p className="text-xs text-muted-foreground mb-2">Lab Access</p>
+                      {(labStatus as any).service_urls.map((url: string, i: number) => (
+                        <Button 
+                          key={i}
+                          variant="default"
+                          className="w-full font-mono text-xs"
+                          onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                        >
+                          <Server className="h-3.5 w-3.5 mr-2" />
+                          {url}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Artifacts */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Download className="h-5 w-5 text-brand" />
-                Artifacts ({challenge.artifacts.length})
+                Artifacts ({(challenge as any)?.artifacts?.length || 0})
               </CardTitle>
               <CardDescription>
                 Download the files needed to solve this challenge
@@ -262,7 +355,7 @@ export default function ChallengePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {challenge.artifacts.map((artifact: any) => (
+                {((challenge as any)?.artifacts || []).map((artifact: any) => (
                   <div key={artifact.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700">
                     <div className="flex-1">
                       <p className="font-medium">{artifact.filename}</p>
@@ -281,13 +374,13 @@ export default function ChallengePage() {
           </Card>
 
           {/* Hints */}
-          {challenge.hints.length > 0 && (
+          {((challenge as any)?.hints?.length || 0) > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Lightbulb className="h-5 w-5 text-yellow-400" />
-                    Hints ({challenge.hints.length})
+                    Hints ({(challenge as any)?.hints?.length || 0})
                   </div>
                   <Button
                     variant="ghost"
@@ -305,13 +398,13 @@ export default function ChallengePage() {
               {showHints && (
                 <CardContent>
                   <div className="space-y-3">
-                    {challenge.hints.map((hint: any) => (
+                    {((challenge as any)?.hints || []).map((hint: any) => (
                       <div key={hint.order} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700">
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="font-medium">Hint #{hint.order}</p>
                             <p className="text-sm text-muted-foreground">
-                              Cost: {hint.cost_percent}% of points ({Math.floor(challenge.points_base * hint.cost_percent / 100)} points)
+                              Cost: {hint.cost_percent}% of points ({Math.floor(((challenge as any)?.points_base || 0) * hint.cost_percent / 100)} points)
                             </p>
                           </div>
                           {consumedHints.includes(hint.order) ? (
@@ -333,7 +426,7 @@ export default function ChallengePage() {
                         {consumedHints.includes(hint.order) && (
                           <div className="mt-3 p-2 rounded bg-slate-700/50">
                             <p className="text-sm">
-                              {challenge.hints.find((h: any) => h.order === hint.order)?.text || '[Hint content]'}
+                              {((challenge as any)?.hints || []).find((h: any) => h.order === hint.order)?.text || '[Hint content]'}
                             </p>
                           </div>
                         )}
@@ -419,7 +512,7 @@ export default function ChallengePage() {
           </Card>
 
           {/* Challenge Instance */}
-          {challenge.mode === 'solo' && (
+          {(challenge as any)?.mode === 'solo' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -442,37 +535,6 @@ export default function ChallengePage() {
             </Card>
           )}
 
-          {/* Lab Environment */}
-          {challenge.has_lab && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Server className="h-5 w-5 text-blue-400" />
-                  Lab Environment
-                </CardTitle>
-                <CardDescription>
-                  Start a lab environment for hands-on analysis
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={handleStartLab} disabled={startLabMutation.isPending}>
-                    <Play className="h-4 w-4 mr-2" />
-                    {startLabMutation.isPending ? 'Starting...' : 'Start Lab'}
-                  </Button>
-                  <Button variant="outline" className="flex-1" onClick={handleStopLab} disabled={stopLabMutation.isPending}>
-                    <Square className="h-4 w-4 mr-2" />
-                    {stopLabMutation.isPending ? 'Stopping...' : 'Stop Lab'}
-                  </Button>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  <p>Status: <span className="text-slate-400">Not started</span></p>
-                  <p>TTL: <span className="text-slate-400">--:--</span></p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Challenge Info */}
           <Card>
             <CardHeader>
@@ -482,7 +544,7 @@ export default function ChallengePage() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Mode</p>
-                  <p className="font-medium">{challenge.mode}</p>
+                  <p className="font-medium">{(challenge as any)?.mode}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Solves</p>

@@ -5,7 +5,7 @@ from fastapi.security import HTTPBearer
 import os
 
 from src.database import engine, Base
-from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, ai_challenge, admin_ai, two_factor, notifications, analytics
+from src.routes import auth, challenges, seasons, submissions, admin, artifacts, leaderboard, ai_challenge, admin_ai, two_factor, notifications, analytics, internal
 from src.utils.logging import setup_logging
 from src.utils.logging import get_logger
 
@@ -76,6 +76,7 @@ app.include_router(analytics.router, prefix="/api/admin/analytics", tags=["Admin
 # app.include_router(ai_challenge.router, prefix="/api", tags=["AI Generation"])  # Disabled - using admin_ai.router instead
 app.include_router(admin_ai.router, prefix="/api/admin/ai", tags=["Admin AI Generation"])
 app.include_router(notifications.router, prefix="/api", tags=["Notifications"])
+app.include_router(internal.router, prefix="/api", tags=["Internal"])
 
 @app.get("/api/health")
 async def health_check():

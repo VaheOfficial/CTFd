@@ -19,7 +19,9 @@ import {
   Eye,
   BadgeCheckIcon,
   Clock,
-  CheckCircle
+  CheckCircle,
+  Edit,
+  Trash2
 } from 'lucide-react'
 
 export default function AdminSeasonsPage() {
@@ -33,6 +35,8 @@ export default function AdminSeasonsPage() {
     start_date: '',
     total_weeks: 8
   })
+
+  const WEEK_OPTIONS = [1, 2, 3, 4, 6, 8, 10, 12]
 
   // Calculate end date based on start date and total weeks
   const calculateEndDate = (startDate: string, totalWeeks: number) => {
@@ -153,9 +157,9 @@ export default function AdminSeasonsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[4, 6, 8, 10, 12].map(weeks => (
+                    {WEEK_OPTIONS.map(weeks => (
                       <SelectItem key={weeks} value={weeks.toString()}>
-                        {weeks} weeks
+                        {weeks} week{weeks !== 1 ? 's' : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -281,6 +285,12 @@ export default function AdminSeasonsPage() {
                           <Button variant="outline" size="sm">
                             <Eye className="h-4 w-4 mr-1" />
                             View
+                          </Button>
+                        </Link>
+                        <Link href={`/admin/seasons/${season.id}/edit`}>
+                          <Button variant="outline" size="sm">
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
                           </Button>
                         </Link>
                       </div>

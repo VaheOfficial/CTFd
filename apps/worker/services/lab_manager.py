@@ -13,7 +13,8 @@ class LabManager:
     """Manages lab environments for challenges"""
 
     def __init__(self):
-        self.docker = docker.from_env()
+        # Use unix socket explicitly to avoid URL scheme issues
+        self.docker = docker.DockerClient(base_url='unix:///var/run/docker.sock')
         self.network_name = os.getenv('LAB_NETWORK', 'cte-labs')
         self._ensure_network()
 

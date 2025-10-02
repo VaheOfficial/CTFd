@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { apiClient } from '@/lib/api/client'
 import { 
   Bot, 
@@ -44,6 +46,7 @@ export default function AdminAIPage() {
   const [track, setTrack] = useState<'INTEL_RECON' | 'ACCESS_EXPLOIT' | 'IDENTITY_CLOUD' | 'C2_EGRESS' | 'DETECT_FORENSICS'>('DETECT_FORENSICS')
   const [difficulty, setDifficulty] = useState<'EASY' | 'MEDIUM' | 'HARD' | 'INSANE'>('EASY')
   const [provider, setProvider] = useState<'auto' | 'gpt5' | 'claude'>('auto')
+  const [autoStop, setAutoStop] = useState<boolean>(false)
   const [maxIterations, setMaxIterations] = useState<number>(20)
   const [seed, setSeed] = useState<number | undefined>(undefined)
   
@@ -510,6 +513,7 @@ export default function AdminAIPage() {
         track,
         difficulty,
         preferred_provider: provider,
+        auto_stop: autoStop,
         max_iterations: maxIterations,
         ...(seed && { seed })
       }
@@ -630,9 +634,16 @@ export default function AdminAIPage() {
                   setPhase('iteration')
                   setIterationCurrent(data.current)
                   setIterationMax(data.max)
-                  setHudMessage(`Iteration ${data.current}/${data.max}`)
+                  const iterMsg = data.auto_stop 
+                    ? `Iteration ${data.current} (auto-stop mode)` 
+                    : `Iteration ${data.current}/${data.max}`
+                  setHudMessage(iterMsg)
                   spawnPackets(8)
-                  addLog(`🔄 Iteration ${data.current}/${data.max}`, 'info')
+                  addLog(`🔄 ${iterMsg}`, 'info')
+                  break
+                case 'auto_stop':
+                  addLog(`🛑 AI signaled completion after ${data.iteration} iterations`, 'success')
+                  setHudMessage(`AI completed after ${data.iteration} iterations`)
                   break
                 case 'agent_message':
                   setHudMessage('Agent responded')
@@ -846,14 +857,17 @@ export default function AdminAIPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Max Iterations</label>
+              <label className="text-sm font-medium">
+                {autoStop ? 'Auto-Stop (Infinite)' : 'Max Iterations'}
+              </label>
               <Input
                 type="number"
                 min={1}
-                max={50}
+                max={100}
                 value={maxIterations}
                 onChange={(e) => setMaxIterations(Number(e.target.value || 1))}
-                disabled={isRunning}
+                disabled={isRunning || autoStop}
+                placeholder={autoStop ? 'AI decides when to stop' : '1-100'}
               />
             </div>
             <div className="space-y-2">
@@ -867,7 +881,22 @@ export default function AdminAIPage() {
             </div>
           </div>
 
-          
+          <div className="mt-4 flex items-center space-x-3 rounded-lg border border-border/50 p-4">
+            <Switch
+              id="auto-stop"
+              checked={autoStop}
+              onCheckedChange={setAutoStop}
+              disabled={isRunning}
+            />
+            <div className="flex-1">
+              <Label htmlFor="auto-stop" className="text-sm font-medium cursor-pointer">
+                Infinite Iteration Mode (Auto-Stop)
+              </Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Let the AI decide when to stop generating. The agent will continue until it signals completion or hits the safety cap (100 iterations).
+              </p>
+            </div>
+          </div>
 
           <div className="mt-6 flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -1084,7 +1113,11 @@ export default function AdminAIPage() {
                 <div className="absolute top-20 right-8 w-72 space-y-3">
                   <motion.div layout className="rounded-xl border border-border/60 bg-background/60 backdrop-blur p-3 shadow-sm">
                     <div className="text-xs text-muted-foreground">Iterations</div>
-                    <div className="text-sm font-medium">{iterationCurrent ?? 0} / {iterationMax ?? maxIterations}</div>
+                    <div className="text-sm font-medium">
+                      {autoStop 
+                        ? `${iterationCurrent ?? 0} (auto)` 
+                        : `${iterationCurrent ?? 0} / ${iterationMax ?? maxIterations}`}
+                    </div>
                   </motion.div>
                   <motion.div layout className="rounded-xl border border-border/60 bg-background/60 backdrop-blur p-3 shadow-sm">
                     <div className="text-xs text-muted-foreground">Elapsed</div>
@@ -1107,7 +1140,12 @@ export default function AdminAIPage() {
                     <div className="text-sm text-foreground/90 truncate">{hudMessage}</div>
                     <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1"><span className="text-foreground/70">Phase:</span><span className="font-medium">{phase ?? '—'}</span></div>
-                      <div className="flex items-center gap-1"><span className="text-foreground/70">Iter:</span><span className="font-medium">{iterationCurrent ?? 0}/{iterationMax ?? maxIterations}</span></div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-foreground/70">Iter:</span>
+                        <span className="font-medium">
+                          {autoStop ? `${iterationCurrent ?? 0} (auto)` : `${iterationCurrent ?? 0}/${iterationMax ?? maxIterations}`}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-1"><span className="text-foreground/70">Tool:</span><span className="font-medium">{toolName ?? '—'}</span></div>
                     </div>
                     {phase === 'complete' && result?.challenge_id && (

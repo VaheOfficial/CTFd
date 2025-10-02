@@ -4,7 +4,7 @@ networks:
     internal: false
   lab-net:
     driver: bridge
-    internal: true
+    internal: false  # Allow port publishing for user access
   ctegw:
     driver: bridge
     internal: false
@@ -112,11 +112,13 @@ services:
     restart: unless-stopped
     volumes:
       - ./apps/worker:/app
+      - ./apps/api/src:/api_src:ro  # Mount API source for database access
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - core-net
       - lab-net
     environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
       - DATABASE_URL=${DATABASE_URL:-postgresql://cte:cte123@postgres:5432/cte}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
@@ -127,6 +129,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - PYTHONPATH=/app
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-change_me_in_production}
+      - API_URL=http://api:8000
     depends_on:
       - postgres
       - redis

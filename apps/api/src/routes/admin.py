@@ -29,9 +29,17 @@ class CreateChallengeRequest(BaseModel):
 
 class UpdateChallengeRequest(BaseModel):
     title: Optional[str] = None
+    slug: Optional[str] = None
     description: Optional[str] = None
     status: Optional[ChallengeStatus] = None
     points_base: Optional[int] = None
+    time_cap_minutes: Optional[int] = None
+    track: Optional[str] = None
+    difficulty: Optional[str] = None
+    mode: Optional[str] = None
+    flag_type: Optional[str] = None
+    flag_format: Optional[str] = None
+    static_flag: Optional[str] = None
 
 class AuditLogResponse(BaseModel):
     id: str
@@ -91,6 +99,40 @@ async def get_admin_stats(
         this_week_submissions=int(this_week_submissions or 0),
         ai_generations_today=int(ai_generations_today or 0),
     )
+
+@router.get("/challenges/{challenge_id}")
+async def get_challenge_admin(
+    challenge_id: str,
+    current_user: User = Depends(require_author),
+    db: Session = Depends(get_db)
+):
+    """Get challenge details for editing (admin access, bypasses schedule restrictions)"""
+    
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Challenge not found"
+        )
+    
+    return {
+        "id": str(challenge.id),
+        "slug": challenge.slug,
+        "title": challenge.title,
+        "description": challenge.description,
+        "track": challenge.track,
+        "difficulty": challenge.difficulty,
+        "mode": challenge.mode,
+        "status": challenge.status,
+        "points_base": challenge.points_base,
+        "time_cap_minutes": challenge.time_cap_minutes,
+        "flag_type": challenge.flag_type,
+        "flag_format": challenge.flag_format,
+        "static_flag": challenge.static_flag,
+        "created_at": challenge.created_at.isoformat() if challenge.created_at else None,
+        "updated_at": challenge.updated_at.isoformat() if challenge.updated_at else None,
+        "author_id": str(challenge.author_id)
+    }
 
 @router.post("/challenges", status_code=status.HTTP_201_CREATED)
 async def create_challenge(
@@ -234,26 +276,55 @@ async def update_challenge(
     # Store original values for audit
     original_values = {
         "title": challenge.title,
+        "slug": challenge.slug,
         "description": challenge.description,
         "status": challenge.status,
-        "points_base": challenge.points_base
+        "points_base": challenge.points_base,
+        "time_cap_minutes": challenge.time_cap_minutes,
+        "track": challenge.track,
+        "difficulty": challenge.difficulty,
+        "mode": challenge.mode,
+        "flag_type": challenge.flag_type,
+        "flag_format": challenge.flag_format,
+        "static_flag": challenge.static_flag
     }
     
     # Update fields
     if request.title is not None:
         challenge.title = request.title
+    if request.slug is not None:
+        # Check if slug is unique
+        existing = db.query(Challenge).filter(
+            Challenge.slug == request.slug,
+            Challenge.id != challenge_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Challenge with slug '{request.slug}' already exists"
+            )
+        challenge.slug = request.slug
     if request.description is not None:
         challenge.description = request.description
     if request.status is not None:
-        # Validate status transition
-        if not _is_valid_status_transition(challenge.status, request.status):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status transition from {challenge.status} to {request.status}"
-            )
+        # Admins can freely change status without transition restrictions
         challenge.status = request.status
     if request.points_base is not None:
         challenge.points_base = request.points_base
+    if request.time_cap_minutes is not None:
+        challenge.time_cap_minutes = request.time_cap_minutes
+    if request.track is not None:
+        challenge.track = request.track
+    if request.difficulty is not None:
+        challenge.difficulty = request.difficulty
+    if request.mode is not None:
+        challenge.mode = request.mode
+    if request.flag_type is not None:
+        challenge.flag_type = request.flag_type
+    if request.flag_format is not None:
+        challenge.flag_format = request.flag_format
+    if request.static_flag is not None:
+        challenge.static_flag = request.static_flag
     
     challenge.updated_at = datetime.utcnow()
     
@@ -581,14 +652,4 @@ async def update_user(
         "message": "User updated successfully"
     }
 
-def _is_valid_status_transition(current: ChallengeStatus, new: ChallengeStatus) -> bool:
-    """Validate challenge status transitions"""
-    
-    valid_transitions = {
-        ChallengeStatus.DRAFT: [ChallengeStatus.READY, ChallengeStatus.ARCHIVED],
-        ChallengeStatus.READY: [ChallengeStatus.PUBLISHED, ChallengeStatus.ARCHIVED],
-        ChallengeStatus.PUBLISHED: [ChallengeStatus.ARCHIVED],
-        ChallengeStatus.ARCHIVED: []  # Final state
-    }
-    
-    return new in valid_transitions.get(current, [])
+# Status transition validation removed - admins have full control over challenge status

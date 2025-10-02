@@ -4,6 +4,9 @@ import json
 import structlog
 import os
 from datetime import datetime, timedelta
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from docker_client import get_docker_client
 
 logger = structlog.get_logger(__name__)
 
@@ -19,7 +22,38 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
         challenge_instance_id: Associated challenge instance ID
     """
     try:
-        client = docker.from_env()
+        # Check if a lab instance already exists for this challenge instance
+        try:
+            # Import from mounted API directory
+            if '/api_src' not in sys.path:
+                sys.path.insert(0, '/api_src')
+            from database import SessionLocal
+            from models.lab import LabInstance, LabInstanceStatus
+            
+            db = SessionLocal()
+            try:
+                existing_lab = db.query(LabInstance).filter(
+                    LabInstance.challenge_instance_id == challenge_instance_id,
+                    LabInstance.status.in_([LabInstanceStatus.RUNNING, LabInstanceStatus.STARTING])
+                ).first()
+                
+                if existing_lab:
+                    logger.info("Lab instance already exists", 
+                               challenge_instance_id=challenge_instance_id,
+                               existing_lab_id=str(existing_lab.id),
+                               status=existing_lab.status.value)
+                    return {
+                        'status': 'ERROR',
+                        'error': 'Lab instance already running or starting for this challenge'
+                    }
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning("Could not check for existing lab instance", error=str(e))
+            # Continue anyway - better to potentially create duplicate than to fail
+        
+        # Connect to Docker daemon via mounted socket
+        client = get_docker_client()
         
         # Prepare environment variables
         env = lab_template.get('env_json', {})
@@ -99,38 +133,65 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
 
         # Run container
         if image_name:
-            # Single container mode
-            container = client.containers.run(
+            # Single container mode - explicitly create with port bindings
+            # First create the container without starting it
+            host_config = client.api.create_host_config(
+                port_bindings={container_port: None for container_port in ports.keys()},
+                mem_limit='512m',
+                cpu_quota=100000,
+                restart_policy={'Name': 'unless-stopped'}
+            )
+            
+            networking_config = client.api.create_networking_config({
+                'ctfd_lab-net': client.api.create_endpoint_config()
+            })
+            
+            container_config = client.api.create_container(
                 image_name,
                 detach=True,
                 environment=env,
-                ports=ports,
                 labels=labels,
-                networks=['lab-net'],  # Isolated network
-                mem_limit='512m',
-                cpu_quota=100000,  # 1 CPU
-                restart_policy={'Name': 'unless-stopped'}
+                host_config=host_config,
+                networking_config=networking_config
             )
+            
+            container = client.containers.get(container_config['Id'])
+            container.start()
             # Resolve actual published host ports and IP
             try:
                 container.reload()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to reload container", error=str(e))
+            
+            # Get the actual port bindings assigned by Docker
             try:
-                port_bindings = container.attrs.get('NetworkSettings', {}).get('Ports') or {}
-            except Exception:
-                port_bindings = {}
+                actual_port_bindings = container.attrs.get('NetworkSettings', {}).get('Ports') or {}
+            except Exception as e:
+                logger.warning("Failed to get port bindings", error=str(e))
+                actual_port_bindings = {}
+            
             try:
-                ip_addr = container.attrs['NetworkSettings']['Networks']['lab-net']['IPAddress']
+                ip_addr = container.attrs['NetworkSettings']['Networks']['ctfd_lab-net']['IPAddress']
             except Exception:
                 ip_addr = None
+
+            # Extract exposed ports for the frontend
+            exposed_ports = {}
+            for container_port, bindings in actual_port_bindings.items():
+                if bindings:
+                    for binding in bindings:
+                        # binding is like {'HostIp': '0.0.0.0', 'HostPort': '32768'}
+                        host_port = binding.get('HostPort')
+                        if host_port:
+                            exposed_ports[container_port] = host_port
 
             result = {
                 'status': 'RUNNING',
                 'container_id': container.id,
                 'container_name': container.name,
                 'ip_address': ip_addr,
-                'ports': port_bindings
+                'ports': actual_port_bindings,
+                'exposed_ports': exposed_ports
             }
         
         elif lab_template.get('compose_yaml_s3_key'):
@@ -152,28 +213,43 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
         except Exception:
             pass
 
-        # Update DB LabInstance status
+        # Update DB LabInstance status via API
         try:
-            import os, sys
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            from apps.api.src.database import SessionLocal
-            from apps.api.src.models.lab import LabInstance, LabInstanceStatus
-            db = SessionLocal()
-            try:
-                lab = db.query(LabInstance).filter(LabInstance.challenge_instance_id == challenge_instance_id).order_by(LabInstance.created_at.desc()).first()
-                if lab:
-                    lab.status = LabInstanceStatus.RUNNING
-                    lab.started_at = datetime.utcnow()
-                    lab.expires_at = cleanup_at
-                    lab.container_id = result.get('container_id') if isinstance(result, dict) else None
-                    lab.container_name = result.get('container_name') if isinstance(result, dict) else None
-                    lab.ip_address = result.get('ip_address') if isinstance(result, dict) else None
-                    lab.exposed_ports = result.get('ports') if isinstance(result, dict) else None
-                    db.commit()
-            finally:
-                db.close()
-        except Exception:
-            pass
+            import requests
+            api_url = os.getenv('API_URL', 'http://api:8000')
+            internal_key = os.getenv('INTERNAL_API_KEY', 'change_me_in_production')
+            
+            update_data = {
+                'challenge_instance_id': challenge_instance_id,
+                'status': 'RUNNING',
+                'container_id': result.get('container_id'),
+                'container_name': result.get('container_name'),
+                'ip_address': result.get('ip_address'),
+                'exposed_ports': json.dumps(result.get('ports', {})),
+                'started_at': datetime.utcnow().isoformat(),
+                'expires_at': cleanup_at.isoformat()
+            }
+            
+            response = requests.post(
+                f"{api_url}/api/internal/lab-instance/update-status",
+                json=update_data,
+                params={'api_key': internal_key},
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                logger.info("Lab instance DB updated successfully via API", 
+                           challenge_instance_id=challenge_instance_id,
+                           exposed_ports=result.get('ports'))
+            else:
+                logger.error("Failed to update lab instance via API",
+                            challenge_instance_id=challenge_instance_id,
+                            status_code=response.status_code,
+                            response=response.text)
+        except Exception as e:
+            logger.error("Failed to update DB LabInstance via API", 
+                        error=str(e),
+                        challenge_instance_id=challenge_instance_id)
         
         logger.info("Lab instance started",
                    challenge_instance_id=challenge_instance_id,
@@ -185,21 +261,24 @@ def start_lab_instance(self, lab_template: dict, challenge_instance_id: str):
         logger.error("Lab instance start failed",
                     error=str(e),
                     challenge_instance_id=challenge_instance_id)
-        # Update DB LabInstance to FAILED
+        # Update DB LabInstance to FAILED via API
         try:
-            import os, sys
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            from apps.api.src.database import SessionLocal
-            from apps.api.src.models.lab import LabInstance, LabInstanceStatus
-            db = SessionLocal()
-            try:
-                lab = db.query(LabInstance).filter(LabInstance.challenge_instance_id == challenge_instance_id).order_by(LabInstance.created_at.desc()).first()
-                if lab:
-                    lab.status = LabInstanceStatus.FAILED
-                    lab.error_message = str(e)
-                    db.commit()
-            finally:
-                db.close()
+            import requests
+            api_url = os.getenv('API_URL', 'http://api:8000')
+            internal_key = os.getenv('INTERNAL_API_KEY', 'change_me_in_production')
+            
+            update_data = {
+                'challenge_instance_id': challenge_instance_id,
+                'status': 'FAILED',
+                'error_message': str(e)
+            }
+            
+            requests.post(
+                f"{api_url}/api/internal/lab-instance/update-status",
+                json=update_data,
+                params={'api_key': internal_key},
+                timeout=5
+            )
         except Exception:
             pass
         return {
@@ -216,18 +295,27 @@ def stop_lab_instance(self, container_id: str):
         container_id: Docker container ID to stop
     """
     try:
-        client = docker.from_env()
+        client = get_docker_client()
         
         container = client.containers.get(container_id)
         container.stop(timeout=10)
         container.remove()
         # Update DB status
         try:
-            import os, sys
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            from apps.api.src.database import SessionLocal
-            from apps.api.src.models.lab import LabInstance, LabInstanceStatus
-            from datetime import datetime
+            # Import from mounted API directory
+            import importlib.util
+            
+            db_spec = importlib.util.spec_from_file_location("database_module", "/api_src/database.py")
+            db_module = importlib.util.module_from_spec(db_spec)
+            db_spec.loader.exec_module(db_module)
+            
+            lab_spec = importlib.util.spec_from_file_location("lab_module", "/api_src/models/lab.py")
+            lab_module = importlib.util.module_from_spec(lab_spec)
+            lab_spec.loader.exec_module(lab_module)
+            
+            SessionLocal = db_module.SessionLocal
+            LabInstance = lab_module.LabInstance
+            LabInstanceStatus = lab_module.LabInstanceStatus
             db = SessionLocal()
             try:
                 lab = db.query(LabInstance).filter(LabInstance.container_id == container_id).first()
@@ -264,13 +352,19 @@ def cleanup_expired_labs(self):
     """
     try:
         # Import database here to avoid circular imports
-        import os
-        import sys
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        import importlib.util
         
-        from apps.api.src.database import SessionLocal
-        from apps.api.src.models.lab import LabInstance, LabInstanceStatus
-        from datetime import datetime
+        db_spec = importlib.util.spec_from_file_location("database_module", "/api_src/database.py")
+        db_module = importlib.util.module_from_spec(db_spec)
+        db_spec.loader.exec_module(db_module)
+        
+        lab_spec = importlib.util.spec_from_file_location("lab_module", "/api_src/models/lab.py")
+        lab_module = importlib.util.module_from_spec(lab_spec)
+        lab_spec.loader.exec_module(lab_module)
+        
+        SessionLocal = db_module.SessionLocal
+        LabInstance = lab_module.LabInstance
+        LabInstanceStatus = lab_module.LabInstanceStatus
         
         db = SessionLocal()
         
@@ -281,7 +375,7 @@ def cleanup_expired_labs(self):
                 LabInstance.status.in_([LabInstanceStatus.RUNNING, LabInstanceStatus.STARTING])
             ).all()
             
-            client = docker.from_env()
+            client = get_docker_client()
             cleaned_count = 0
             
             for lab in expired_labs:

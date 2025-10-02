@@ -117,8 +117,8 @@ class ChallengeMaterializer:
             except Exception as e:
                 logger.warning(f"Lab detection/creation failed: {e}")
 
-            # 6. Update challenge status to PUBLISHED so it appears on frontend
-            challenge.status = ChallengeStatus.PUBLISHED
+            # 6. Update challenge status to READY (admin must manually publish)
+            challenge.status = ChallengeStatus.READY
             
             # 7. List all files created for reference
             materialization_result["challenge_files"] = [

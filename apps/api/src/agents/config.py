@@ -12,7 +12,8 @@ class AgentConfig(BaseModel):
     max_tokens: Optional[int] = Field(default=None)
     
     # Agent behavior
-    max_iterations: int = Field(default=20, ge=1, le=50)
+    max_iterations: int = Field(default=20, ge=1, le=100)
+    auto_stop: bool = Field(default=False, description="Let AI decide when to stop (infinite iterations with safety cap)")
     enable_web_search: bool = Field(default=False)
     enable_file_upload: bool = Field(default=True)
     

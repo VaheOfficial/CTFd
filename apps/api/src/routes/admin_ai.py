@@ -34,7 +34,8 @@ class GenerateChallengeRequest(BaseModel):
     difficulty: Optional[str] = Field(None, pattern="^(EASY|MEDIUM|HARD|INSANE)$")
     track: Optional[str] = Field(None, pattern="^(INTEL_RECON|ACCESS_EXPLOIT|IDENTITY_CLOUD|C2_EGRESS|DETECT_FORENSICS)$")
     seed: Optional[int] = Field(None, ge=1, le=999999)
-    max_iterations: Optional[int] = Field(None, ge=1, le=50)
+    auto_stop: Optional[bool] = Field(False, description="Let AI decide when to stop (infinite iterations mode)")
+    max_iterations: Optional[int] = Field(None, ge=1, le=100)
     # Optional client-provided stream ID to allow the UI to subscribe before POST returns
     client_stream_id: Optional[str] = None
 
@@ -160,18 +161,13 @@ async def generate_challenge(
                 preferred_provider=provider_map.get(request.preferred_provider or "auto", LLMProvider.AUTO),
                 track=track_map.get(request.track) if request.track else None,
                 difficulty=difficulty_map.get(request.difficulty) if request.difficulty else None,
-                seed=request.seed
+                seed=request.seed,
+                auto_stop=request.auto_stop,
+                max_iterations=request.max_iterations
             )
             
             # Use the AI generation service
             service = AIGenerationService(db)
-            
-            # If caller specified iterations, override for this run
-            if request.max_iterations:
-                try:
-                    service.agent.config.max_iterations = int(request.max_iterations)
-                except Exception:
-                    pass
             
             yield f"data: {json.dumps({'type': 'build', 'message': 'Starting AI agent'})}\n\n"
             

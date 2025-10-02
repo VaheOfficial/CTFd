@@ -45,6 +45,12 @@ class ChallengeAgent:
     async def generate_challenge(self, request: GenerateChallengeRequest, stream_id: str | None = None) -> GenerateChallengeResponse:
         """Generate a complete CTF challenge using the agent."""
         
+        # Override config with request-specific settings
+        if request.auto_stop is not None:
+            self.config.auto_stop = request.auto_stop
+        if request.max_iterations is not None and not request.auto_stop:
+            self.config.max_iterations = min(request.max_iterations, 100)
+        
         # Create unique workspace for this generation
         generation_id = str(uuid4())
         challenge_id = str(uuid4())
@@ -75,6 +81,15 @@ Requirements:
 - Prompt: {request.prompt}
 
 CRITICAL: You must not just create files - you must BUILD and TEST the actual challenge!
+
+WEBAPP/SERVICE CHALLENGES:
+- If creating a web application, web service, or any interactive challenge, you MUST:
+  1. Create a complete Dockerfile (or docker-compose.yml if multi-container)
+  2. Place the Dockerfile in a clearly named directory like 'web/', 'service/', or the workspace root
+  3. Include all necessary application code, dependencies, and configuration
+  4. Test that the container builds successfully using execute_shell
+  5. Specify the lab configuration in challenge.json with type="container" or type="compose"
+  6. The challenge should be PLAYABLE through the deployed container, not just downloadable files
 
 Your workflow MUST include:
 1. Design the challenge concept
@@ -131,14 +146,16 @@ Output contract for downstream materialization:
       "format": "{flag_format_literal}"              // optional; default is {flag_format_literal}
     }},
     "lab": {{
-      // ALWAYS INCLUDE this object. If the challenge is NOT hosted, set all fields to null/empty.
-      // The platform builds/runs hosted challenges for players on demand.
-      // If the user is vague, infer reasonable defaults (prefer a simple container app).
-      "type": "container" | "compose" | null,
-      "dockerfile_dir": "./" | "web" | "service" | "path/to/dir" | null,  // for container; if unsure, use "web" if it exists else "./"
-      "ports": [80, 3000] | null,                                              // OPTIONAL; platform auto-detects from Dockerfile EXPOSE; set null if unsure
-      "env": {{ "KEY": "VALUE" }} | {{}},                                      // OPTIONAL env vars
-      "compose_file": "docker-compose.yml" | null                              // for compose; ensure file exists if provided
+      // *** CRITICAL FOR WEB/SERVICE CHALLENGES ***
+      // ALWAYS INCLUDE this object. If the challenge is NOT hosted (e.g., forensics artifact analysis), set type to null.
+      // For web applications, APIs, or any interactive service, you MUST set type to "container" or "compose".
+      // The platform will build and deploy this automatically for players.
+      "type": "container" | "compose" | null,  // USE "container" for webapp challenges with a Dockerfile
+      "dockerfile_dir": "./" | "web" | "service" | "path/to/dir" | null,  // Directory containing Dockerfile; use "web" or "./"
+      "ports": [80, 3000, 8080] | null,                                    // Container ports to expose; platform auto-detects if null
+      "env": {{ "KEY": "VALUE" }} | {{}},                                  // Environment variables; can use for dynamic config
+      "compose_file": "docker-compose.yml" | null,                         // For multi-container setups
+      "name": "Web Application" | null                                     // Optional friendly name for the lab
     }}
   }}
   2) 'deliverables.json' containing only the artifact list (for backward compatibility):
@@ -160,17 +177,24 @@ Output contract for downstream materialization:
         iteration_count = 0
         final_result = {}
         
-        logger.info(f"Starting iterative agent loop (max {self.config.max_iterations} iterations)")
+        # Safety cap for infinite iterations mode
+        SAFETY_CAP = 100
+        max_iter = SAFETY_CAP if self.config.auto_stop else self.config.max_iterations
         
-        while iteration_count < self.config.max_iterations:
+        mode_str = "auto-stop mode (AI decides)" if self.config.auto_stop else f"max {max_iter} iterations"
+        logger.info(f"Starting iterative agent loop ({mode_str})")
+        
+        while iteration_count < max_iter:
             iteration_count += 1
-            logger.info(f"Iteration {iteration_count}/{self.config.max_iterations}")
+            iter_msg = f"Iteration {iteration_count}" + ("" if self.config.auto_stop else f"/{max_iter}")
+            logger.info(iter_msg)
             if stream_manager and stream_id:
                 await stream_manager.publish(stream_id, {
                     "type": "iteration",
                     "current": iteration_count,
-                    "max": self.config.max_iterations,
-                    "message": f"Starting iteration {iteration_count}/{self.config.max_iterations}"
+                    "max": max_iter if not self.config.auto_stop else None,
+                    "auto_stop": self.config.auto_stop,
+                    "message": f"Starting {iter_msg}"
                 })
             
             try:
@@ -216,6 +240,25 @@ Output contract for downstream materialization:
                         })
                 
                 messages.append(serializable_message)
+                
+                # Check if AI is done (no tool calls and has created required files)
+                if not message.tool_calls:
+                    if self.config.auto_stop:
+                        # Check if required files exist
+                        challenge_json = workspace_dir / "challenge.json"
+                        deliverables_json = workspace_dir / "deliverables.json"
+                        
+                        if challenge_json.exists() or deliverables_json.exists():
+                            logger.info(f"AI signaled completion (no more tool calls, required files exist)")
+                            if stream_manager and stream_id:
+                                await stream_manager.publish(stream_id, {
+                                    "type": "auto_stop",
+                                    "message": "AI has completed the challenge generation",
+                                    "iteration": iteration_count
+                                })
+                            break
+                        else:
+                            logger.info("AI stopped making tool calls but required files not found, continuing...")
                 
                 # Handle tool calls
                 if message.tool_calls:
@@ -337,9 +380,24 @@ Output contract for downstream materialization:
                         if stream_manager and stream_id:
                             await stream_manager.publish(stream_id, {"type": "complete"})
                         break
+                    
+                    # In auto-stop mode, check if required files exist
+                    if self.config.auto_stop:
+                        challenge_json = workspace_dir / "challenge.json"
+                        deliverables_json = workspace_dir / "deliverables.json"
+                        
+                        if challenge_json.exists() or deliverables_json.exists():
+                            logger.info(f"Auto-stop: AI completed (no tool calls, required files exist)")
+                            if stream_manager and stream_id:
+                                await stream_manager.publish(stream_id, {
+                                    "type": "auto_stop",
+                                    "message": "AI has completed the challenge generation",
+                                    "iteration": iteration_count
+                                })
+                            break
                 
-                # Also check if we're near the iteration limit and no tool calls
-                if not message.tool_calls and iteration_count >= self.config.max_iterations - 2:
+                # Also check if we're near the iteration limit and no tool calls (only in non-auto-stop mode)
+                if not self.config.auto_stop and not message.tool_calls and iteration_count >= self.config.max_iterations - 2:
                     logger.warning("Approaching iteration limit, forcing completion check")
                     # Ask agent to summarize and complete
                     messages.append({

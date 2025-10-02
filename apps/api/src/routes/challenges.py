@@ -42,6 +42,7 @@ class ChallengeResponse(BaseModel):
     artifacts: List[dict]
     hints: List[dict]
     has_lab: bool
+    instance_id: Optional[str] = None
 
 class ChallengeInstanceResponse(BaseModel):
     id: str
@@ -53,12 +54,12 @@ class ChallengeInstanceResponse(BaseModel):
 class LabStatusResponse(BaseModel):
     instance_id: str
     status: str
-    started_at: Optional[datetime]
-    expires_at: Optional[datetime]
-    kasm_url: Optional[str]
-    vpn_config: Optional[str]
-    exposed_ports: Optional[dict]
-    service_urls: Optional[list]
+    started_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    kasm_url: Optional[str] = None
+    vpn_config: Optional[str] = None
+    exposed_ports: Optional[dict] = None
+    service_urls: Optional[list] = None
 
 
 @router.get("/challenges", response_model=List[ChallengeResponse])
@@ -229,6 +230,12 @@ async def get_challenge(
     # Check if lab available
     has_lab = db.query(LabTemplate).filter(LabTemplate.challenge_id == challenge_id).first() is not None
     
+    # Get user's challenge instance if it exists
+    challenge_instance = db.query(ChallengeInstance).filter(
+        ChallengeInstance.challenge_id == challenge_id,
+        ChallengeInstance.user_id == current_user.id
+    ).first()
+    
     return ChallengeResponse(
         id=str(challenge.id),
         slug=challenge.slug,
@@ -242,7 +249,8 @@ async def get_challenge(
         description=challenge.description or "",
         artifacts=artifacts_data,
         hints=hints_data,
-        has_lab=has_lab
+        has_lab=has_lab,
+        instance_id=str(challenge_instance.id) if challenge_instance else None
     )
 
 @router.post("/challenges/{challenge_id}/instance", response_model=ChallengeInstanceResponse)
@@ -321,10 +329,10 @@ async def get_lab_status(
             detail="Challenge instance not found"
         )
     
-    # Get lab instance
+    # Get lab instance (most recent one)
     lab_instance = db.query(LabInstance).filter(
         LabInstance.challenge_instance_id == instance_id
-    ).first()
+    ).order_by(LabInstance.created_at.desc()).first()
     
     if not lab_instance:
         return LabStatusResponse(
@@ -351,20 +359,32 @@ async def get_lab_status(
     # Build externally reachable URLs for exposed ports
     # Expect lab_instance.exposed_ports in Docker API format: {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}], ...}
     service_urls: list = []
+    exposed_ports_dict = None
     try:
+        # Parse exposed_ports if it's a JSON string
+        import json
+        if isinstance(lab_instance.exposed_ports, str):
+            exposed_ports_dict = json.loads(lab_instance.exposed_ports)
+        elif isinstance(lab_instance.exposed_ports, dict):
+            exposed_ports_dict = lab_instance.exposed_ports
+        
         # Host for access: prefer DOMAIN env when caddy is publishing 80/443, else use localhost
         host = os.getenv('DOMAIN', 'localhost')
-        port_map = lab_instance.exposed_ports or {}
-        for cport, bindings in (port_map.items() if isinstance(port_map, dict) else []):
+        port_map = exposed_ports_dict or {}
+        seen_ports = set()  # Track unique host ports to avoid duplicates
+        for cport, bindings in port_map.items():
             if not bindings:
                 continue
+            # Docker returns multiple bindings (IPv4 + IPv6), take the first valid one
             for b in bindings:
                 hp = b.get('HostPort')
-                if hp:
+                if hp and hp not in seen_ports:
+                    seen_ports.add(hp)
                     # Assume HTTP for common ports
                     proto = 'http'
                     if cport.endswith('/tcp'):
                         service_urls.append(f"{proto}://{host}:{hp}")
+                    break  # Only take first binding per container port
     except Exception:
         pass
 
@@ -375,7 +395,7 @@ async def get_lab_status(
         expires_at=lab_instance.expires_at,
         kasm_url=kasm_url,
         vpn_config=vpn_config,
-        exposed_ports=lab_instance.exposed_ports,
+        exposed_ports=exposed_ports_dict,
         service_urls=service_urls
     )
 

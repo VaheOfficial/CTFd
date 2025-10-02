@@ -45,6 +45,16 @@ class GenerateChallengeRequest(BaseModel):
         le=999999,
         description="Seed for deterministic generation"
     )
+    auto_stop: Optional[bool] = Field(
+        default=False,
+        description="If true, let AI decide when to stop (infinite iterations mode). Safety cap at 100 iterations."
+    )
+    max_iterations: Optional[int] = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum iterations if auto_stop is false. Ignored if auto_stop is true."
+    )
 
     @validator('prompt')
     def validate_prompt_safety(cls, v):
