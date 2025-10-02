@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import uuid
 
 from ..database import get_db
-from ..models.user import User
+from ..models.user import User, UserRole
 from ..models.season import Season, Week, WeekChallenge
 from ..models.challenge import Challenge
 from ..utils.auth import get_current_user, require_admin
@@ -186,6 +186,17 @@ async def create_season(
     db.commit()
     db.refresh(season)
     
+    # Create a single week that spans the entire season (for internal challenge assignment)
+    week = Week(
+        season_id=season.id,
+        index=1,
+        opens_at=start_date,
+        closes_at=end_date,
+        is_mini_mission=False
+    )
+    db.add(week)
+    db.commit()
+    
     logger.info("Season created",
                season_id=str(season.id),
                name=season.name,
@@ -254,6 +265,12 @@ async def update_season(
             season.start_at = start_date
             season.end_at = end_date
             season.total_weeks = total_weeks
+            
+            # Update the single week to match the season dates
+            week = db.query(Week).filter(Week.season_id == season_id).first()
+            if week:
+                week.opens_at = start_date
+                week.closes_at = end_date
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -675,4 +692,319 @@ async def unassign_challenge_from_week(
         "status": "unassigned",
         "week_id": week_id,
         "challenge_id": challenge_id
+    }
+
+@router.get("/seasons/{season_id}/challenges")
+async def get_season_challenges(
+    season_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all challenges assigned to a season (across all weeks)"""
+    
+    # Get season
+    season = db.query(Season).filter(Season.id == season_id).first()
+    if not season:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Season not found"
+        )
+    
+    # Get all weeks in this season
+    weeks = db.query(Week).filter(Week.season_id == season_id).all()
+    week_ids = [str(week.id) for week in weeks]
+    
+    # Get all challenges assigned to these weeks
+    challenge_ids = set()
+    mappings = db.query(WeekChallenge).filter(WeekChallenge.week_id.in_(week_ids)).all()
+    for mapping in mappings:
+        challenge_ids.add(str(mapping.challenge_id))
+    
+    # Get challenge details
+    challenges = []
+    for challenge_id in challenge_ids:
+        ch = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+        if ch:
+            challenges.append({
+                "id": str(ch.id),
+                "slug": ch.slug,
+                "title": ch.title,
+                "track": ch.track,
+                "difficulty": ch.difficulty,
+                "points_base": ch.points_base,
+                "status": ch.status
+            })
+    
+    return {"season_id": season_id, "challenges": challenges}
+
+@router.get("/seasons/{season_id}/available-challenges")
+async def get_available_challenges_for_season(
+    season_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get all published challenges that can be added to a season (admin only)"""
+    
+    # Get season
+    season = db.query(Season).filter(Season.id == season_id).first()
+    if not season:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Season not found"
+        )
+    
+    # Get all weeks in this season
+    weeks = db.query(Week).filter(Week.season_id == season_id).all()
+    week_ids = [str(week.id) for week in weeks]
+    
+    # Get challenges already assigned to this season
+    assigned_challenge_ids = set()
+    if week_ids:
+        mappings = db.query(WeekChallenge).filter(WeekChallenge.week_id.in_(week_ids)).all()
+        assigned_challenge_ids = {str(m.challenge_id) for m in mappings}
+    
+    # Get all published challenges
+    if current_user.role == UserRole.ADMIN:
+        challenges = db.query(Challenge).all()
+    else:
+        challenges = db.query(Challenge).filter(Challenge.status == "PUBLISHED").all()
+    
+    available = []
+    assigned = []
+    
+    for ch in challenges:
+        challenge_data = {
+            "id": str(ch.id),
+            "slug": ch.slug,
+            "title": ch.title,
+            "track": ch.track,
+            "difficulty": ch.difficulty,
+            "points_base": ch.points_base,
+            "status": ch.status
+        }
+        
+        if str(ch.id) in assigned_challenge_ids:
+            assigned.append(challenge_data)
+        else:
+            available.append(challenge_data)
+    
+    return {
+        "season_id": season_id,
+        "available": available,
+        "assigned": assigned
+    }
+
+@router.get("/challenges/{challenge_id}/seasons")
+async def get_challenge_seasons(
+    challenge_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get all seasons (assigned and unassigned) for a specific challenge (admin only)"""
+    
+    # Validate challenge exists
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Challenge not found"
+        )
+    
+    # Get all seasons
+    all_seasons = db.query(Season).order_by(Season.start_at.desc()).all()
+    
+    # Get weeks that this challenge is assigned to
+    week_challenges = db.query(WeekChallenge).filter(WeekChallenge.challenge_id == challenge_id).all()
+    assigned_week_ids = {str(wc.week_id) for wc in week_challenges}
+    
+    # Map weeks to seasons
+    assigned_season_ids = set()
+    for week_id in assigned_week_ids:
+        week = db.query(Week).filter(Week.id == week_id).first()
+        if week:
+            assigned_season_ids.add(str(week.season_id))
+    
+    assigned = []
+    unassigned = []
+    
+    for season in all_seasons:
+        season_data = {
+            "id": str(season.id),
+            "name": season.name,
+            "start_at": season.start_at.isoformat(),
+            "end_at": season.end_at.isoformat(),
+            "total_weeks": season.total_weeks,
+            "description": season.description
+        }
+        
+        if str(season.id) in assigned_season_ids:
+            assigned.append(season_data)
+        else:
+            unassigned.append(season_data)
+    
+    return {
+        "challenge_id": challenge_id,
+        "assigned": assigned,
+        "unassigned": unassigned
+    }
+
+@router.post("/challenges/{challenge_id}/seasons/{season_id}")
+async def assign_challenge_to_season(
+    challenge_id: str,
+    season_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Assign a challenge to a season by adding it to the first week (admin only)"""
+    
+    # Validate challenge exists
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Challenge not found"
+        )
+    
+    # Validate season exists
+    season = db.query(Season).filter(Season.id == season_id).first()
+    if not season:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Season not found"
+        )
+    
+    # Get first week in the season
+    first_week = db.query(Week).filter(Week.season_id == season_id).order_by(Week.index).first()
+    
+    if not first_week:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Season has no weeks. Please create at least one week first."
+        )
+    
+    # Check if already assigned to this season (any week)
+    weeks = db.query(Week).filter(Week.season_id == season_id).all()
+    week_ids = [w.id for w in weeks]
+    
+    existing = db.query(WeekChallenge).filter(
+        WeekChallenge.challenge_id == challenge_id,
+        WeekChallenge.week_id.in_(week_ids)
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Challenge already assigned to this season"
+        )
+    
+    # Assign to first week
+    week_challenge = WeekChallenge(
+        week_id=first_week.id,
+        challenge_id=challenge_id,
+        display_order=0
+    )
+    
+    db.add(week_challenge)
+    db.commit()
+    
+    create_audit_log(
+        db=db,
+        action="challenge_assigned_to_season",
+        entity_type="week_challenge",
+        entity_id=str(week_challenge.id),
+        actor_user_id=str(current_user.id),
+        details={
+            "challenge_id": challenge_id,
+            "season_id": season_id,
+            "week_id": str(first_week.id)
+        }
+    )
+    
+    logger.info("Challenge assigned to season",
+               challenge_id=challenge_id,
+               season_id=season_id,
+               admin_id=str(current_user.id))
+    
+    return {
+        "status": "assigned",
+        "challenge_id": challenge_id,
+        "season_id": season_id
+    }
+
+@router.delete("/challenges/{challenge_id}/seasons/{season_id}")
+async def unassign_challenge_from_season(
+    challenge_id: str,
+    season_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Remove a challenge from all weeks in a season (admin only)"""
+    
+    # Validate challenge exists
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Challenge not found"
+        )
+    
+    # Validate season exists
+    season = db.query(Season).filter(Season.id == season_id).first()
+    if not season:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Season not found"
+        )
+    
+    # Get all weeks in the season
+    weeks = db.query(Week).filter(Week.season_id == season_id).all()
+    week_ids = [w.id for w in weeks]
+    
+    if not week_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Season has no weeks"
+        )
+    
+    # Find and delete all assignments
+    assignments = db.query(WeekChallenge).filter(
+        WeekChallenge.challenge_id == challenge_id,
+        WeekChallenge.week_id.in_(week_ids)
+    ).all()
+    
+    if not assignments:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Challenge not assigned to this season"
+        )
+    
+    for assignment in assignments:
+        db.delete(assignment)
+    
+    db.commit()
+    
+    create_audit_log(
+        db=db,
+        action="challenge_unassigned_from_season",
+        entity_type="season",
+        entity_id=season_id,
+        actor_user_id=str(current_user.id),
+        details={
+            "challenge_id": challenge_id,
+            "season_id": season_id,
+            "removed_count": len(assignments)
+        }
+    )
+    
+    logger.info("Challenge unassigned from season",
+               challenge_id=challenge_id,
+               season_id=season_id,
+               removed_count=len(assignments),
+               admin_id=str(current_user.id))
+    
+    return {
+        "status": "unassigned",
+        "challenge_id": challenge_id,
+        "season_id": season_id,
+        "removed_count": len(assignments)
     }

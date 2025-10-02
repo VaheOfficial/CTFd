@@ -208,9 +208,55 @@ class ApiClient {
     return this.request<WeeksResponse>(`/api/seasons/${seasonId}/weeks`)
   }
 
+  async getSeasonChallenges(seasonId: string) {
+    return this.request(`/api/seasons/${seasonId}/challenges`)
+  }
+
+  async getAvailableChallengesForSeason(seasonId: string) {
+    return this.request(`/api/seasons/${seasonId}/available-challenges`)
+  }
+
+  async assignChallengeToWeek(weekId: string, challengeId: string, displayOrder: number = 0) {
+    return this.request(`/api/weeks/${weekId}/challenges`, {
+      method: 'POST',
+      body: JSON.stringify({ challenge_id: challengeId, display_order: displayOrder })
+    })
+  }
+
+  async unassignChallengeFromWeek(weekId: string, challengeId: string) {
+    return this.request(`/api/weeks/${weekId}/challenges/${challengeId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async getChallengeSeasons(challengeId: string) {
+    return this.request(`/api/challenges/${challengeId}/seasons`)
+  }
+
+  async assignChallengeToSeason(challengeId: string, seasonId: string) {
+    return this.request(`/api/challenges/${challengeId}/seasons/${seasonId}`, {
+      method: 'POST'
+    })
+  }
+
+  async unassignChallengeFromSeason(challengeId: string, seasonId: string) {
+    return this.request(`/api/challenges/${challengeId}/seasons/${seasonId}`, {
+      method: 'DELETE'
+    })
+  }
+
   // Challenges
-  async getChallenges() {
-    return this.request('/api/challenges')
+  async getChallenges(params?: { track?: string; difficulty?: string; current_season_only?: boolean }) {
+    const queryParams = new URLSearchParams()
+    if (params?.track) queryParams.set('track', params.track)
+    if (params?.difficulty) queryParams.set('difficulty', params.difficulty)
+    if (params?.current_season_only) queryParams.set('current_season_only', 'false')
+    
+    const url = queryParams.toString() 
+      ? `/api/challenges?${queryParams.toString()}`
+      : '/api/challenges'
+    
+    return this.request(url)
   }
 
   async getChallengeById(challengeId: string) {

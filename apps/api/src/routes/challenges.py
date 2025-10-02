@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from ..database import get_db
 from ..models.user import User, UserRole
 from ..models.challenge import Challenge, ChallengeInstance, Artifact, HintConsumption, Hint
-from ..models.season import WeekChallenge, Week
+from ..models.season import WeekChallenge, Week, Season
 from ..models.lab import LabTemplate, LabInstance, LabInstanceStatus
 from ..utils.auth import get_current_user
 from ..utils.logging import get_logger
@@ -43,6 +43,9 @@ class ChallengeResponse(BaseModel):
     hints: List[dict]
     has_lab: bool
     instance_id: Optional[str] = None
+    season_status: Optional[str] = None  # 'current', 'future', 'past', or None
+    season_id: Optional[str] = None
+    season_name: Optional[str] = None
 
 class ChallengeInstanceResponse(BaseModel):
     id: str
@@ -67,6 +70,7 @@ async def get_challenges(
     track: Optional[str] = None,
     difficulty: Optional[str] = None,
     limit: int = 50,
+    current_season_only: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -84,24 +88,28 @@ async def get_challenges(
     if difficulty:
         query = query.filter(Challenge.difficulty == difficulty)
     
-    # Only show challenges that are currently available (within open weeks)
     from sqlalchemy import and_, or_
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     
-    # Get challenges that are either not scheduled to any week OR are in an open week
-    available_challenge_ids = db.query(WeekChallenge.challenge_id).join(
-        Week, WeekChallenge.week_id == Week.id
-    ).filter(
-        and_(Week.opens_at <= now, Week.closes_at >= now)
-    ).subquery()
-    
-    # Include challenges that are in open weeks OR not scheduled to any week
-    challenges = query.filter(
-        or_(
-            Challenge.id.in_(available_challenge_ids),
-            ~Challenge.id.in_(db.query(WeekChallenge.challenge_id))
+    # For non-admin users, only show challenges that are currently available (within open weeks/seasons)
+    if current_user.role != UserRole.ADMIN:
+        
+        # Get challenges that are either not scheduled to any week OR are in an open week
+        available_challenge_ids = db.query(WeekChallenge.challenge_id).join(
+            Week, WeekChallenge.week_id == Week.id
+        ).filter(
+            and_(Week.opens_at <= now, Week.closes_at >= now)
+        ).subquery()
+        
+        # Include challenges that are in open weeks OR not scheduled to any week
+        query = query.filter(
+            or_(
+                Challenge.id.in_(available_challenge_ids),
+                ~Challenge.id.in_(db.query(WeekChallenge.challenge_id))
+            )
         )
-    ).limit(limit).all()
+    
+    challenges = query.limit(limit).all()
     
     # Build response
     challenge_responses = []
@@ -139,6 +147,33 @@ async def get_challenges(
         # Check if lab available
         has_lab = db.query(LabTemplate).filter(LabTemplate.challenge_id == challenge.id).first() is not None
         
+        # Get season information for this challenge
+        season_status = None
+        season_id = None
+        season_name = None
+        
+        week_challenge = db.query(WeekChallenge).filter(WeekChallenge.challenge_id == challenge.id).first()
+        if week_challenge:
+            week = db.query(Week).filter(Week.id == week_challenge.week_id).first()
+            if week:
+                season = db.query(Season).filter(Season.id == week.season_id).first()
+                if season:
+                    season_id = str(season.id)
+                    season_name = season.name
+                    # Determine season status based on dates (strip timezone from DB values)
+                    start_at = season.start_at.replace(tzinfo=None) if season.start_at.tzinfo else season.start_at
+                    end_at = season.end_at.replace(tzinfo=None) if season.end_at.tzinfo else season.end_at
+                    if now < start_at:
+                        season_status = 'future'
+                    elif now > end_at:
+                        season_status = 'past'
+                    else:
+                        season_status = 'current'
+        
+        # Filter by current season if requested
+        if current_season_only and season_status != 'current':
+            continue
+        
         challenge_responses.append(ChallengeResponse(
             id=str(challenge.id),
             slug=challenge.slug,
@@ -152,7 +187,10 @@ async def get_challenges(
             description=challenge.description or "",
             artifacts=artifacts_data,
             hints=hints_data,
-            has_lab=has_lab
+            has_lab=has_lab,
+            season_status=season_status,
+            season_id=season_id,
+            season_name=season_name
         ))
     
     return challenge_responses
@@ -192,8 +230,11 @@ async def get_challenge(
     ).first()
     if mapping:
         _, wk = mapping
-        now = datetime.utcnow()
-        if not (wk.opens_at <= now <= wk.closes_at):
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Strip timezone from DB values for comparison
+        opens_at = wk.opens_at.replace(tzinfo=None) if wk.opens_at.tzinfo else wk.opens_at
+        closes_at = wk.closes_at.replace(tzinfo=None) if wk.closes_at.tzinfo else wk.closes_at
+        if not (opens_at <= now <= closes_at):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Challenge not available yet")
     
     # Get artifacts
@@ -236,6 +277,30 @@ async def get_challenge(
         ChallengeInstance.user_id == current_user.id
     ).first()
     
+    # Get season information for this challenge
+    season_status = None
+    season_id = None
+    season_name = None
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    week_challenge = db.query(WeekChallenge).filter(WeekChallenge.challenge_id == challenge_id).first()
+    if week_challenge:
+        week = db.query(Week).filter(Week.id == week_challenge.week_id).first()
+        if week:
+            season = db.query(Season).filter(Season.id == week.season_id).first()
+            if season:
+                season_id = str(season.id)
+                season_name = season.name
+                # Determine season status based on dates (strip timezone from DB values)
+                start_at = season.start_at.replace(tzinfo=None) if season.start_at.tzinfo else season.start_at
+                end_at = season.end_at.replace(tzinfo=None) if season.end_at.tzinfo else season.end_at
+                if now < start_at:
+                    season_status = 'future'
+                elif now > end_at:
+                    season_status = 'past'
+                else:
+                    season_status = 'current'
+    
     return ChallengeResponse(
         id=str(challenge.id),
         slug=challenge.slug,
@@ -250,7 +315,10 @@ async def get_challenge(
         artifacts=artifacts_data,
         hints=hints_data,
         has_lab=has_lab,
-        instance_id=str(challenge_instance.id) if challenge_instance else None
+        instance_id=str(challenge_instance.id) if challenge_instance else None,
+        season_status=season_status,
+        season_id=season_id,
+        season_name=season_name
     )
 
 @router.post("/challenges/{challenge_id}/instance", response_model=ChallengeInstanceResponse)
@@ -289,7 +357,7 @@ async def create_challenge_instance(
         challenge_id=challenge_id,
         user_id=current_user.id,
         dynamic_seed=secrets.token_hex(16),  # 32-char hex string
-        expires_at=datetime.utcnow() + timedelta(hours=24)  # 24-hour expiry
+        expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=24)  # 24-hour expiry
     )
     
     db.add(instance)
@@ -460,7 +528,7 @@ async def start_lab_instance(
             lab_template_id=lab_template.id,
             challenge_instance_id=instance_id,
             status=LabInstanceStatus.STARTING,
-            expires_at=datetime.utcnow() + timedelta(minutes=lab_template.ttl_minutes)
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=lab_template.ttl_minutes)
         )
         
         db.add(lab_instance)

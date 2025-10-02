@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { apiClient } from '@/lib/api/client'
-import { ArrowLeft, Save, Target, Loader2, Info, Clock, Trophy } from 'lucide-react'
+import { ArrowLeft, Save, Target, Loader2, Info, Clock, Trophy, Calendar, Plus, X } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 
@@ -67,9 +67,13 @@ export default function EditChallengePage() {
     flag_format: 'flag{{{}}}',
     static_flag: ''
   })
+  const [assignedSeasons, setAssignedSeasons] = useState<any[]>([])
+  const [unassignedSeasons, setUnassignedSeasons] = useState<any[]>([])
+  const [loadingSeasons, setLoadingSeasons] = useState(false)
 
   useEffect(() => {
     loadChallenge()
+    loadSeasons()
   }, [challengeId])
 
   const loadChallenge = async () => {
@@ -84,19 +88,20 @@ export default function EditChallengePage() {
       }
       
       if (response.data) {
+        const data = response.data as any
         setChallenge({
-          title: response.data.title || '',
-          slug: response.data.slug || '',
-          description: response.data.description || '',
-          track: response.data.track || 'INTEL_RECON',
-          difficulty: response.data.difficulty || 'MEDIUM',
-          mode: response.data.mode || 'solo',
-          status: response.data.status || 'DRAFT',
-          points_base: response.data.points_base || 100,
-          time_cap_minutes: response.data.time_cap_minutes || 60,
-          flag_type: response.data.flag_type || 'dynamic_hmac',
-          flag_format: response.data.flag_format || 'flag{{{}}}',
-          static_flag: response.data.static_flag || ''
+          title: data.title || '',
+          slug: data.slug || '',
+          description: data.description || '',
+          track: data.track || 'INTEL_RECON',
+          difficulty: data.difficulty || 'MEDIUM',
+          mode: data.mode || 'solo',
+          status: data.status || 'DRAFT',
+          points_base: data.points_base || 100,
+          time_cap_minutes: data.time_cap_minutes || 60,
+          flag_type: data.flag_type || 'dynamic_hmac',
+          flag_format: data.flag_format || 'flag{{{}}}',
+          static_flag: data.static_flag || ''
         })
       }
     } catch (error: any) {
@@ -104,6 +109,59 @@ export default function EditChallengePage() {
       toast.error('Failed to load challenge: ' + (error.message || 'Unknown error'))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadSeasons = async () => {
+    try {
+      setLoadingSeasons(true)
+      const response = await apiClient.getChallengeSeasons(challengeId)
+      
+      if (response.error) {
+        toast.error('Failed to load seasons: ' + response.error.message)
+        return
+      }
+      
+      if (response.data) {
+        const data = response.data as any
+        setAssignedSeasons(data.assigned || [])
+        setUnassignedSeasons(data.unassigned || [])
+      }
+    } catch (error: any) {
+      console.error('Error loading seasons:', error)
+      toast.error('Failed to load seasons: ' + (error.message || 'Unknown error'))
+    } finally {
+      setLoadingSeasons(false)
+    }
+  }
+
+  const handleAssignToSeason = async (seasonId: string) => {
+    try {
+      const response = await apiClient.assignChallengeToSeason(challengeId, seasonId)
+      
+      if (response.error) {
+        toast.error('Failed to assign to season: ' + response.error.message)
+      } else {
+        toast.success('Challenge assigned to season')
+        loadSeasons()
+      }
+    } catch (error: any) {
+      toast.error('Failed to assign to season: ' + (error.message || 'Unknown error'))
+    }
+  }
+
+  const handleUnassignFromSeason = async (seasonId: string) => {
+    try {
+      const response = await apiClient.unassignChallengeFromSeason(challengeId, seasonId)
+      
+      if (response.error) {
+        toast.error('Failed to remove from season: ' + response.error.message)
+      } else {
+        toast.success('Challenge removed from season')
+        loadSeasons()
+      }
+    } catch (error: any) {
+      toast.error('Failed to remove from season: ' + (error.message || 'Unknown error'))
     }
   }
 
@@ -382,6 +440,97 @@ export default function EditChallengePage() {
                 onChange={(e) => setChallenge({ ...challenge, static_flag: e.target.value })}
                 placeholder="Enter the static flag value"
               />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Season Assignments
+          </CardTitle>
+          <CardDescription>Manage which seasons this challenge appears in</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {loadingSeasons ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-brand" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Unassigned Seasons */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Available Seasons</h3>
+                <div className="border border-border rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
+                  {unassignedSeasons.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No available seasons
+                    </p>
+                  ) : (
+                    unassignedSeasons.map((season) => (
+                      <div
+                        key={season.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 hover:bg-secondary/30 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{season.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(season.start_at).toLocaleDateString()} - {new Date(season.end_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleAssignToSeason(season.id)}
+                          className="ml-2 shrink-0"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Assigned Seasons */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Assigned Seasons</h3>
+                <div className="border border-border rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
+                  {assignedSeasons.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Not assigned to any season yet
+                    </p>
+                  ) : (
+                    assignedSeasons.map((season) => (
+                      <div
+                        key={season.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{season.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(season.start_at).toLocaleDateString()} - {new Date(season.end_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleUnassignFromSeason(season.id)}
+                          className="ml-2 shrink-0 hover:bg-destructive/20"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

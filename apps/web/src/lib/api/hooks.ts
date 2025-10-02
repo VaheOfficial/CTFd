@@ -500,15 +500,18 @@ interface ChallengeResponse extends Array<{
     available: boolean;
   }>;
   has_lab: boolean;
+  season_status?: string;
+  season_id?: string;
+  season_name?: string;
 }> {}
 
-export function useChallenges() {
+export function useChallenges(params?: { track?: string; difficulty?: string; current_season_only?: boolean }) {
   const queryClient = useQueryClient()
   
   return useQuery({
-    queryKey: queryKeys.challenges(),
+    queryKey: [...queryKeys.challenges(), params],
     queryFn: async () => {
-      const response = await apiClient.getChallenges()
+      const response = await apiClient.getChallenges(params)
 
       if (response.error) {
         throw new Error(response.error.message)

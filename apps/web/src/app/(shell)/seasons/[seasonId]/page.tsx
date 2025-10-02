@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useSeason, useSeasonWeeks, useMe } from '@/lib/api/hooks'
+import { useSeason, useMe, useLeaderboard } from '@/lib/api/hooks'
 import { formatPoints } from '@/lib/utils'
 import { 
   Trophy, 
@@ -14,21 +14,24 @@ import {
   Target, 
   Clock,
   ArrowRight,
-  Lock,
-  CheckCircle,
-  PlayCircle,
-  Star
+  Star,
+  Crown,
+  Medal,
+  Award
 } from 'lucide-react'
+import type { components } from '@/lib/api/types'
+
+type SeasonResponse = components['schemas']['SeasonResponse']
 
 export default function SeasonPage() {
   const params = useParams()
   const seasonId = params.seasonId as string
   
   const { data: season, isLoading: seasonLoading } = useSeason(seasonId)
-  const { data: weeks, isLoading: weeksLoading } = useSeasonWeeks(seasonId)
   const { data: user } = useMe()
+  const { data: leaderboard, isLoading: leaderboardLoading } = useLeaderboard(seasonId, 50)
 
-  const isLoading = seasonLoading || weeksLoading
+  const isLoading = seasonLoading
 
   if (isLoading) {
     return (
@@ -57,39 +60,50 @@ export default function SeasonPage() {
     )
   }
 
-  const getWeekStatus = (week: any) => {
-    const now = new Date()
-    const startDate = new Date(week.start_date)
-    const endDate = new Date(week.end_date)
-    
-    if (now < startDate) return 'upcoming'
-    if (now > endDate) return 'completed'
-    return 'active'
-  }
+  // Type guard to ensure season is properly typed
+  const typedSeason = season as SeasonResponse
 
-  const getWeekIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-5 w-5 text-green-400" />
-      case 'active':
-        return <PlayCircle className="h-5 w-5 text-brand" />
-      case 'upcoming':
-        return <Lock className="h-5 w-5 text-slate-400" />
-      default:
-        return <Clock className="h-5 w-5 text-slate-400" />
+  // Helper function to calculate days
+  const calculateDays = (season: SeasonResponse) => {
+    const start = new Date(season.start_at)
+    const end = new Date(season.end_at)
+    const now = new Date()
+    
+    const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+    const elapsedDays = Math.max(0, Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
+    const remainingDays = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+    
+    return {
+      total: totalDays,
+      elapsed: Math.min(elapsedDays, totalDays),
+      remaining: remainingDays,
+      percentage: Math.min(100, Math.round((elapsedDays / totalDays) * 100))
     }
   }
 
-  const getWeekBadgeVariant = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'default'
-      case 'active':
-        return 'default'
-      case 'upcoming':
-        return 'outline'
+  const getRankIcon = (rank: number) => {
+    switch (rank) {
+      case 1:
+        return <Crown className="h-5 w-5 text-yellow-400" />
+      case 2:
+        return <Medal className="h-5 w-5 text-slate-400" />
+      case 3:
+        return <Award className="h-5 w-5 text-amber-600" />
       default:
-        return 'outline'
+        return <span className="w-5 text-center font-bold text-muted-foreground">#{rank}</span>
+    }
+  }
+
+  const getRankColor = (rank: number) => {
+    switch (rank) {
+      case 1:
+        return 'border-yellow-400/50 bg-yellow-400/10'
+      case 2:
+        return 'border-slate-400/50 bg-slate-400/10'
+      case 3:
+        return 'border-amber-600/50 bg-amber-600/10'
+      default:
+        return ''
     }
   }
 
@@ -100,88 +114,54 @@ export default function SeasonPage() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link href="/seasons" className="hover:text-brand">Seasons</Link>
           <ArrowRight className="h-4 w-4" />
-          <span>{season.name}</span>
+          <span>{typedSeason.name}</span>
         </div>
         
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Trophy className="h-8 w-8 text-brand" />
-              {season.name}
-              {season.is_active && (
+              {typedSeason.name}
+              {typedSeason.is_active && (
                 <Star className="h-6 w-6 text-yellow-400" />
               )}
             </h1>
             <p className="text-muted-foreground text-lg">
-              {season.description}
+              {typedSeason.description}
             </p>
           </div>
           
-          <div className="flex gap-4">
-            <Link href={`/leaderboard/season/${seasonId}`}>
-              <Button variant="outline">
-                <Trophy className="h-4 w-4 mr-2" />
-                Leaderboard
+          {typedSeason.is_active && (
+            <Link href="/challenges">
+              <Button>
+                <Target className="h-4 w-4 mr-2" />
+                View Challenges
               </Button>
             </Link>
-            {season.is_active && (
-              <Link href="/challenges">
-                <Button>
-                  <Target className="h-4 w-4 mr-2" />
-                  View Challenges
-                </Button>
-              </Link>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
       {/* Season Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Current Week</CardTitle>
-            <Calendar className="h-4 w-4 text-brand" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              Week {season.current_week || 1}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              of {season.total_weeks || 8} weeks
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Challenges</CardTitle>
-            <Target className="h-4 w-4 text-brand" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{season.total_challenges || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              across all weeks
-            </p>
-          </CardContent>
-        </Card>
-
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Participants</CardTitle>
             <Users className="h-4 w-4 text-brand" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{season.total_participants || 0}</div>
+            <div className="text-2xl font-bold">
+              {leaderboard?.total_participants || 0}
+            </div>
             <p className="text-xs text-muted-foreground">
-              registered players
+              competing players
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Your Progress</CardTitle>
+            <CardTitle className="text-sm font-medium">Your Points</CardTitle>
             <Star className="h-4 w-4 text-brand" />
           </CardHeader>
           <CardContent>
@@ -189,122 +169,132 @@ export default function SeasonPage() {
               {formatPoints((user as any)?.total_points || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
-              total points
+              total score
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Your Rank</CardTitle>
+            <Trophy className="h-4 w-4 text-brand" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              #{leaderboard?.entries?.find((e: any) => e.is_current_user)?.rank || '-'}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              current position
             </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Season Progress */}
-      {season.is_active && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Season Progress</CardTitle>
-            <CardDescription>
-              Track your progress through the season
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Week {season.current_week || 1} of {season.total_weeks || 8}</span>
-                <span>{Math.round(((season.current_week || 1) / (season.total_weeks || 8)) * 100)}%</span>
-              </div>
-              <div className="w-full bg-slate-700 rounded-full h-3">
-                <div 
-                  className="bg-brand h-3 rounded-full transition-all duration-500" 
-                  style={{ 
-                    width: `${Math.round(((season.current_week || 1) / (season.total_weeks || 8)) * 100)}%` 
-                  }}
-                ></div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Week Timeline */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">
-          {season.is_active ? 'Week Timeline' : 'Season Structure'}
-        </h2>
-        
-        {weeks && weeks.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {weeks.map((week: any) => {
-              const status = getWeekStatus(week)
-              return (
-                <Card 
-                  key={week.id} 
-                  className={`transition-all duration-200 hover:shadow-lg ${
-                    status === 'active' ? 'border-brand/50 bg-brand/5' : 
-                    status === 'completed' ? 'border-green-500/30' : 
-                    'border-slate-700'
-                  }`}
-                >
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {getWeekIcon(status)}
-                        <CardTitle className="text-lg">Week {week.index}</CardTitle>
-                      </div>
-                      <Badge variant={getWeekBadgeVariant(status)}>
-                        {status.toUpperCase()}
-                      </Badge>
-                    </div>
-                    <CardDescription>
-                      {week.theme || `Week ${week.index} challenges`}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <div className="font-medium">{week.challenge_count || 0}</div>
-                        <div className="text-muted-foreground">Challenges</div>
-                      </div>
-                      <div>
-                        <div className="font-medium">{formatPoints(week.total_points || 0)}</div>
-                        <div className="text-muted-foreground">Points</div>
-                      </div>
-                    </div>
-                    
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(week.start_date).toLocaleDateString()} - {new Date(week.end_date).toLocaleDateString()}
-                    </div>
-
-                    {status !== 'upcoming' ? (
-                      <Link href={`/seasons/${seasonId}/weeks/${week.index}`}>
-                        <Button 
-                          variant={status === 'active' ? 'default' : 'outline'} 
-                          size="sm" 
-                          className="w-full"
-                        >
-                          {status === 'active' ? 'View Challenges' : 'View Results'}
-                        </Button>
-                      </Link>
-                    ) : (
-                      <Button variant="ghost" size="sm" className="w-full" disabled>
-                        <Lock className="h-4 w-4 mr-2" />
-                        Locked
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-        ) : (
+      {typedSeason.is_active && (() => {
+        const days = calculateDays(typedSeason)
+        return (
           <Card>
-            <CardContent className="text-center py-16">
-              <Calendar className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <CardTitle className="text-xl mb-2">No Weeks Scheduled</CardTitle>
+            <CardHeader>
+              <CardTitle>Season Progress</CardTitle>
               <CardDescription>
-                Week structure will be available soon
+                Track your progress through the season
               </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Day {days.elapsed} of {days.total}</span>
+                  <span>{days.percentage}%</span>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-3">
+                  <div 
+                    className="bg-brand h-3 rounded-full transition-all duration-500" 
+                    style={{ 
+                      width: `${days.percentage}%` 
+                    }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                  <span>{days.remaining} days remaining</span>
+                  <span>Ends {new Date(typedSeason.end_at).toLocaleDateString()}</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
-        )}
-      </div>
+        )
+      })()}
+
+      {/* Leaderboard */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-brand" />
+            Season Leaderboard
+          </CardTitle>
+          <CardDescription>
+            Top performers in {typedSeason.name}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {leaderboardLoading ? (
+            <div className="space-y-3">
+              {[...Array(10)].map((_, i) => (
+                <div key={i} className="animate-pulse flex items-center space-x-4 p-3">
+                  <div className="w-8 h-4 bg-slate-700 rounded"></div>
+                  <div className="flex-1 h-4 bg-slate-700 rounded"></div>
+                  <div className="w-16 h-4 bg-slate-700 rounded"></div>
+                </div>
+              ))}
+            </div>
+          ) : leaderboard?.entries && leaderboard.entries.length > 0 ? (
+            <div className="space-y-2">
+              {leaderboard.entries.map((entry: any) => (
+                <div 
+                  key={entry.user_id}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-colors hover:bg-slate-800/50 ${
+                    entry.is_current_user ? 'border-brand/50 bg-brand/10' : 'border-slate-700'
+                  } ${getRankColor(entry.rank)}`}
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center justify-center w-8">
+                      {getRankIcon(entry.rank)}
+                    </div>
+                    <div>
+                      <p className="font-medium flex items-center gap-2">
+                        {entry.username}
+                        {entry.is_current_user && (
+                          <Badge variant="default" className="text-xs">YOU</Badge>
+                        )}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {entry.challenges_solved} challenges solved
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono font-bold text-brand">
+                      {formatPoints(entry.total_points)}
+                    </p>
+                    {entry.last_submission && (
+                      <p className="text-xs text-muted-foreground">
+                        Last: {new Date(entry.last_submission).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                No participants yet. Be the first to compete!
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

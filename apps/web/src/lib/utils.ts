@@ -23,18 +23,16 @@ export function getDifficultyColor(difficulty: string): string {
 
 export function getTrackColor(track: string): string {
   switch (track.toLowerCase()) {
-    case 'forensics':
+    case 'identity_cloud':
       return '#3b82f6' // blue
-    case 'web':
+    case 'intel_recon':
       return '#10b981' // emerald
-    case 'crypto':
+    case 'c2_egress':
       return '#8b5cf6' // violet
-    case 'pwn':
+    case 'access_exploit':
       return '#ef4444' // red
-    case 'rev':
+    case 'detect_forensics':
       return '#f59e0b' // amber
-    case 'misc':
-      return '#6b7280' // gray
     default:
       return '#6b7280'
   }

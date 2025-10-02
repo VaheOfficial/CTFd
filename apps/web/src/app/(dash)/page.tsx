@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useSeasons, useMe, useBadges } from '@/lib/api/hooks'
+import { useSeasons, useMe, useBadges, useChallenges } from '@/lib/api/hooks'
 import { 
   Trophy, 
   Target, 
@@ -20,17 +20,39 @@ export default function DashboardPage() {
   const { data: user } = useMe()
   const { data: seasons } = useSeasons()
   const { data: badges } = useBadges()
+  const { data: challenges } = useChallenges()
 
   // Find current active season
   const activeSeason = seasons?.find(season => season.is_active)
   const currentWeek = activeSeason?.current_week
 
-  // Mock data for demonstration - replace with actual API calls
+  // Filter challenges for active season
+  const seasonChallenges = challenges?.filter((c: any) => 
+    c.season_id === activeSeason?.id && c.status === 'published'
+  ) || []
+  
+  const solvedChallenges = seasonChallenges.filter((c: any) => c.is_solved)
+  const weekProgress = seasonChallenges.length > 0 
+    ? Math.round((solvedChallenges.length / seasonChallenges.length) * 100)
+    : 0
+
+  // Get featured challenge (first unsolved challenge)
+  const featuredChallenge = seasonChallenges.find((c: any) => !c.is_solved)
+
+  // Stats
   const stats = {
     totalPoints: (user as any)?.total_points || 0,
     rank: (user as any)?.rank || 0,
     challengesSolved: (user as any)?.challenges_solved || 0,
     streak: (user as any)?.streak || 0,
+  }
+
+  const getStreakMessage = (streak: number) => {
+    if (streak === 0) return "Start your streak today!"
+    if (streak === 1) return "Great start!"
+    if (streak < 7) return "Keep building!"
+    if (streak < 30) return "Impressive streak!"
+    return "Outstanding dedication!"
   }
 
   return (
@@ -40,9 +62,6 @@ export default function DashboardPage() {
         <h1 className="text-4xl font-bold tracking-tight text-foreground mb-3">
           Welcome back, {(user as any)?.username || 'Defender'}
         </h1>
-        <p className="text-lg text-muted-foreground">
-          Ready to strengthen your defensive cyber operations skills?
-        </p>
       </div>
 
       {/* Quick Stats - Modern cards */}
@@ -100,9 +119,11 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold text-warning mb-2">{stats.streak} days</div>
+            <div className="text-4xl font-bold text-warning mb-2">
+              {stats.streak} {stats.streak === 1 ? 'day' : 'days'}
+            </div>
             <p className="text-sm text-muted-foreground">
-              Keep it up!
+              {getStreakMessage(stats.streak)}
             </p>
           </CardContent>
         </Card>
@@ -127,34 +148,65 @@ export default function DashboardPage() {
           <CardContent className="space-y-8">
             {activeSeason ? (
               <>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-base">Progress</span>
-                    <span className="font-mono text-primary text-base">2/5 challenges</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-4">
-                    <div className="bg-gradient-to-r from-primary to-primary/80 h-4 rounded-full transition-all duration-500" style={{ width: '40%' }} />
-                  </div>
-                </div>
-                
-                <div className="space-y-4">
-                  <p className="text-base font-semibold text-muted-foreground">Featured Challenge:</p>
-                  <div className="p-5 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-semibold text-foreground text-lg">Network Traffic Analysis</h4>
-                        <p className="text-base text-muted-foreground mt-2">Forensics • Medium • 200 pts</p>
+                {seasonChallenges.length > 0 ? (
+                  <>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-base">Progress</span>
+                        <span className="font-mono text-primary text-base">
+                          {solvedChallenges.length}/{seasonChallenges.length} challenges
+                        </span>
                       </div>
-                      <Badge className="text-difficulty-medium-text bg-difficulty-medium-bg border-difficulty-medium-border rounded-full px-4 py-2 text-sm">
-                        Medium
-                      </Badge>
+                      <div className="w-full bg-muted rounded-full h-4">
+                        <div 
+                          className="bg-gradient-to-r from-primary to-primary/80 h-4 rounded-full transition-all duration-500" 
+                          style={{ width: `${weekProgress}%` }} 
+                        />
+                      </div>
                     </div>
+                    
+                    {featuredChallenge ? (
+                      <div className="space-y-4">
+                        <p className="text-base font-semibold text-muted-foreground">Next Challenge:</p>
+                        <Link href={`/challenges/${featuredChallenge.slug}`}>
+                          <div className="p-5 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors cursor-pointer">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-semibold text-foreground text-lg">{featuredChallenge.title}</h4>
+                                <p className="text-base text-muted-foreground mt-2">
+                                  {featuredChallenge.track} • {featuredChallenge.difficulty} • {featuredChallenge.points_base} pts
+                                </p>
+                              </div>
+                              <Badge className={`rounded-full px-4 py-2 text-sm ${
+                                featuredChallenge.difficulty === 'easy' ? 'bg-green-500/20 text-green-400 border-green-500/50' :
+                                featuredChallenge.difficulty === 'medium' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50' :
+                                'bg-red-500/20 text-red-400 border-red-500/50'
+                              }`}>
+                                {featuredChallenge.difficulty}
+                              </Badge>
+                            </div>
+                          </div>
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Trophy className="h-12 w-12 text-primary mx-auto mb-3" />
+                        <p className="text-base font-semibold text-foreground">All challenges completed! 🎉</p>
+                        <p className="text-sm text-muted-foreground mt-2">Check back for new challenges</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground mb-2 font-medium">No challenges available yet</p>
+                    <p className="text-sm text-muted-foreground">New challenges will be released soon</p>
                   </div>
-                </div>
+                )}
 
                 <Button asChild className="w-full rounded-xl h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base">
                   <Link href={`/seasons/${activeSeason.id}`}>
-                    View All Challenges
+                    View Season
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>
@@ -222,56 +274,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Announcements */}
-      <Card className="rounded-2xl border-0 bg-gradient-to-br from-card via-card/95 to-card/80 shadow-lg hover:shadow-xl transition-all duration-300">
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-3">
-            <div className="p-3 rounded-xl bg-warning/10">
-              <Zap className="h-6 w-6 text-warning" />
-            </div>
-            <span className="text-xl font-semibold">Latest Announcements</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex space-x-4">
-            <div className="w-1 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-foreground">Week 3 Challenges Now Live!</h4>
-                <span className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded-full">2h ago</span>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Five new defensive cybersecurity challenges covering incident response, 
-                malware analysis, and network forensics.
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex space-x-4">
-            <div className="w-1 bg-gradient-to-b from-secondary to-secondary/50 rounded-full"></div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-foreground">New AI Challenge Generator</h4>
-                <span className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded-full">1d ago</span>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Administrators can now generate custom challenges using our AI system. 
-                Expect more diverse content!
-              </p>
-            </div>
-          </div>
-          
-          <div className="p-4 rounded-xl bg-accent/5 border border-accent/20">
-            <div className="flex items-center space-x-3 mb-2">
-              <div className="w-3 h-3 bg-accent rounded-full"></div>
-              <span className="text-xs font-semibold text-accent uppercase tracking-wider">System Status</span>
-            </div>
-            <p className="text-sm text-foreground font-medium">All systems operational</p>
-            <p className="text-xs text-muted-foreground mt-1">Next maintenance: Sunday 02:00 UTC</p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

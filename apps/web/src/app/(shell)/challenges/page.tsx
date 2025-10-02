@@ -1,62 +1,39 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Target } from 'lucide-react'
-import { apiGet, getDifficultyColor, getTrackColor, formatTime, formatPoints, getDifficultyVariant } from '@/lib/utils'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Target, Lock, Clock } from 'lucide-react'
+import { getDifficultyColor, getTrackColor, formatTime, formatPoints, getDifficultyVariant } from '@/lib/utils'
+import { useChallenges } from '@/lib/api/hooks'
 
-interface Challenge {
-  id: string
-  slug: string
-  title: string
-  track: string
-  difficulty: string
-  points_base: number
-  time_cap_minutes: number
-  mode: string
-  description: string
-  artifacts: Array<{
-    id: string
-    filename: string
-    kind: string
-    size_bytes: number
-  }>
-  hints: Array<{
-    order: number
-    cost_percent: number
-    available: boolean
-  }>
-  has_lab: boolean
+const tracks = {
+  all: 'All Tracks',
+  identity_cloud: 'Identity & Cloud',
+  intel_recon: 'Intel & Recon',
+  c2_egress: 'C2 & Egress',
+  access_exploit: 'Access & Exploit',
+  detect_forensics: 'Detect & Forensics'
 }
 
+
 export default function ChallengesPage() {
-  const [challenges, setChallenges] = useState<Challenge[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTrack, setSelectedTrack] = useState('all')
   const [selectedDifficulty, setSelectedDifficulty] = useState('all')
+  const [currentSeasonOnly, setCurrentSeasonOnly] = useState(false)
+  
+  const { data: challenges, isLoading: loading, error } = useChallenges({ 
+    current_season_only: currentSeasonOnly 
+  })
 
-  useEffect(() => {
-    fetchChallenges()
-  }, [])
-
-  const fetchChallenges = async () => {
-    try {
-      const response = await apiGet('/api/challenges')
-      setChallenges(response.data || [])
-    } catch (err: any) {
-      setError('Failed to load challenges')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const filteredChallenges = challenges.filter(challenge => {
+  const filteredChallenges = (challenges || []).filter(challenge => {
     const matchesSearch = challenge.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          challenge.description.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesTrack = selectedTrack === 'all' || challenge.track === selectedTrack
@@ -65,7 +42,7 @@ export default function ChallengesPage() {
     return matchesSearch && matchesTrack && matchesDifficulty
   })
 
-  const tracks = ['all', 'forensics', 'web', 'crypto', 'pwn', 'reverse', 'misc']
+  const trackKeys = Object.keys(tracks)
   const difficulties = ['all', 'beginner', 'easy', 'medium', 'hard', 'expert']
 
   if (loading) {
@@ -100,9 +77,6 @@ export default function ChallengesPage() {
           </div>
           CHALLENGES
         </h1>
-        <p className="text-xl text-muted-foreground">
-          Defensive Cyberspace Operations Training Scenarios
-        </p>
       </div>
 
       {/* Filters */}
@@ -119,12 +93,13 @@ export default function ChallengesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
           <div className="space-y-3">
-            <label className="text-base font-semibold text-foreground">
+            <Label htmlFor="search" className="text-base font-semibold">
               Search
-            </label>
+            </Label>
             <Input
+              id="search"
               type="text"
               placeholder="Search challenges..."
               value={searchTerm}
@@ -133,37 +108,55 @@ export default function ChallengesPage() {
           </div>
           
           <div className="space-y-3">
-            <label className="text-base font-semibold text-foreground">
+            <Label htmlFor="track" className="text-base font-semibold">
               Track
-            </label>
-            <select 
-              className="w-full h-12 rounded-xl border-2 border-border bg-card/50 backdrop-blur-sm px-4 py-3 text-base font-medium text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary hover:border-primary/50"
-              value={selectedTrack}
-              onChange={(e) => setSelectedTrack(e.target.value)}
-            >
-              {tracks.map(track => (
-                <option key={track} value={track} className="bg-card text-foreground">
-                  {track.charAt(0).toUpperCase() + track.slice(1)}
-                </option>
-              ))}
-            </select>
+            </Label>
+            <Select value={selectedTrack} onValueChange={setSelectedTrack}>
+              <SelectTrigger id="track">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {trackKeys.map(track => (
+                  <SelectItem key={track} value={track}>
+                    {tracks[track as keyof typeof tracks]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           <div className="space-y-3">
-            <label className="text-base font-semibold text-foreground">
+            <Label htmlFor="difficulty" className="text-base font-semibold">
               Difficulty
-            </label>
-            <select 
-              className="w-full h-12 rounded-xl border-2 border-border bg-card/50 backdrop-blur-sm px-4 py-3 text-base font-medium text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary hover:border-primary/50"
-              value={selectedDifficulty}
-              onChange={(e) => setSelectedDifficulty(e.target.value)}
-            >
-              {difficulties.map(difficulty => (
-                <option key={difficulty} value={difficulty} className="bg-card text-foreground">
-                  {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
-                </option>
-              ))}
-            </select>
+            </Label>
+            <Select value={selectedDifficulty} onValueChange={setSelectedDifficulty}>
+              <SelectTrigger id="difficulty">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {difficulties.map(difficulty => (
+                  <SelectItem key={difficulty} value={difficulty}>
+                    {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-3">
+            <Label htmlFor="season-toggle" className="text-base font-semibold">
+              Current Season
+            </Label>
+            <div className="flex items-center h-12 space-x-3">
+              <Switch 
+                id="season-toggle"
+                checked={currentSeasonOnly}
+                onCheckedChange={setCurrentSeasonOnly}
+              />
+              <span className="text-sm text-muted-foreground">
+                {currentSeasonOnly ? 'On' : 'Off'}
+              </span>
+            </div>
           </div>
           
           <div className="flex items-end">
@@ -174,6 +167,7 @@ export default function ChallengesPage() {
                 setSearchTerm('')
                 setSelectedTrack('all')
                 setSelectedDifficulty('all')
+                setCurrentSeasonOnly(false)
               }}
               className="w-full"
             >
@@ -185,69 +179,217 @@ export default function ChallengesPage() {
       </Card>
 
       {error && (
-        <div className="terminal-window p-4 border-destructive">
-          <div className="text-destructive font-mono">
-            ERROR: {error}
-          </div>
-        </div>
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Target className="h-16 w-16 text-destructive mx-auto mb-4" />
+              <CardTitle className="text-xl mb-2 text-destructive">Failed to Load Challenges</CardTitle>
+              <CardDescription>
+                {error instanceof Error ? error.message : 'Please try refreshing the page'}
+              </CardDescription>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Challenge Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {filteredChallenges.map((challenge) => (
-          <Card key={challenge.id} className="hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 cursor-pointer">
-            <CardHeader className="space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="space-y-3 flex-1">
-                  <CardTitle className="text-xl font-bold">{challenge.title}</CardTitle>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline" style={{ backgroundColor: `${getTrackColor(challenge.track)}20`, borderColor: getTrackColor(challenge.track), color: getTrackColor(challenge.track) }}>
-                      {challenge.track.toUpperCase()}
-                    </Badge>
-                    <Badge variant={getDifficultyVariant(challenge.difficulty)}>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredChallenges.map((challenge) => {
+          const isFuture = (challenge as any).season_status === 'future'
+          const isPast = (challenge as any).season_status === 'past'
+          
+          if (isFuture) {
+            return (
+              <div key={challenge.id}>
+              <Card className={`group relative overflow-hidden transition-all duration-300 h-full border-2 ${
+                isFuture 
+                  ? 'opacity-60 cursor-not-allowed' 
+                  : 'hover:shadow-2xl hover:scale-[1.02] cursor-pointer'
+              }`}>
+                {/* Colored top border */}
+                <div 
+                  className="absolute top-0 left-0 right-0 h-1"
+                  style={{ backgroundColor: getTrackColor(challenge.track) }}
+                />
+                
+                {/* Future/Locked Overlay */}
+                {isFuture && (
+                  <div className="absolute inset-0 bg-background/80 backdrop-blur-[2px] z-10 flex items-center justify-center">
+                    <div className="text-center space-y-2">
+                      <Lock className="h-12 w-12 text-muted-foreground mx-auto" />
+                      <p className="text-sm font-semibold text-muted-foreground">Available in Future Season</p>
+                    </div>
+                  </div>
+                )}
+                
+                <CardHeader className="space-y-4 pb-4">
+                  {/* Track, Difficulty, and Season Status */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="outline"
+                        className="font-semibold"
+                        style={{ 
+                          backgroundColor: `${getTrackColor(challenge.track)}15`,
+                          borderColor: getTrackColor(challenge.track),
+                          color: getTrackColor(challenge.track)
+                        }}
+                      >
+                        {tracks[challenge.track.toLowerCase() as keyof typeof tracks] || challenge.track}
+                      </Badge>
+                      {isPast && (
+                        <Badge variant="outline" className="font-semibold border-amber-500/50 text-amber-500 bg-amber-500/10">
+                          <Clock className="h-3 w-3 mr-1" />
+                          EXPIRED
+                        </Badge>
+                      )}
+                    </div>
+                    <Badge 
+                      variant={getDifficultyVariant(challenge.difficulty)}
+                      className="font-semibold"
+                    >
                       {challenge.difficulty.toUpperCase()}
                     </Badge>
                   </div>
+
+                {/* Title */}
+                <CardTitle className="text-2xl font-bold leading-tight group-hover:text-primary transition-colors">
+                  {challenge.title}
+                </CardTitle>
+
+                {/* Description */}
+                <CardDescription className="text-sm line-clamp-2 min-h-[2.5rem]">
+                  {challenge.description}
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-3 py-4 border-t border-border">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-primary">{formatPoints(challenge.points_base)}</div>
+                    <div className="text-xs text-muted-foreground">Points</div>
+                  </div>
+                  <div className="text-center border-x border-border">
+                    <div className="text-lg font-semibold">{formatTime(challenge.time_cap_minutes)}</div>
+                    <div className="text-xs text-muted-foreground">Time Cap</div>
+                  </div>
+                  {challenge.has_lab ? (
+                    <div className="text-center">
+                      <div className="text-lg font-semibold">🧪</div>
+                      <div className="text-xs text-muted-foreground">Lab</div>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <div className="text-lg font-semibold">{challenge.artifacts.length}</div>
+                      <div className="text-xs text-muted-foreground">Files</div>
+                    </div>
+                  )}
+                  
                 </div>
-                <div className="text-right space-y-1">
-                  <div className="text-primary font-bold text-lg">{formatPoints(challenge.points_base)} pts</div>
-                  <div className="text-muted-foreground text-base">{formatTime(challenge.time_cap_minutes)}</div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <CardDescription className="text-base leading-relaxed">
-                {challenge.description}
-              </CardDescription>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between text-base">
-                  <span className="text-muted-foreground font-medium">Artifacts:</span>
-                  <span className="text-primary font-semibold">{challenge.artifacts.length}</span>
-                </div>
+
+                {/* Call to Action */}
+                <Button 
+                  className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors" 
+                  variant="outline"
+                >
+                  <span>Start Challenge</span>
+                  <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+            )
+          }
+          
+          return (
+            <Link key={challenge.id} href={`/challenges/${challenge.slug}`}>
+              <Card className="group relative overflow-hidden hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 h-full cursor-pointer border-2">
+                {/* Colored top border */}
+                <div 
+                  className="absolute top-0 left-0 right-0 h-1"
+                  style={{ backgroundColor: getTrackColor(challenge.track) }}
+                />
                 
-                <div className="flex items-center justify-between text-base">
-                  <span className="text-muted-foreground font-medium">Hints:</span>
-                  <span className="text-primary font-semibold">{challenge.hints.length}</span>
+                <CardHeader className="space-y-4 pb-4">
+                  {/* Track, Difficulty, and Season Status */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="outline"
+                        className="font-semibold"
+                        style={{ 
+                          backgroundColor: `${getTrackColor(challenge.track)}15`,
+                          borderColor: getTrackColor(challenge.track),
+                          color: getTrackColor(challenge.track)
+                        }}
+                      >
+                        {tracks[challenge.track.toLowerCase() as keyof typeof tracks] || challenge.track}
+                      </Badge>
+                      {isPast && (
+                        <Badge variant="outline" className="font-semibold border-amber-500/50 text-amber-500 bg-amber-500/10">
+                          <Clock className="h-3 w-3 mr-1" />
+                          EXPIRED
+                        </Badge>
+                      )}
+                    </div>
+                    <Badge 
+                      variant={getDifficultyVariant(challenge.difficulty)}
+                      className="font-semibold"
+                    >
+                      {challenge.difficulty.toUpperCase()}
+                    </Badge>
+                  </div>
+
+                {/* Title */}
+                <CardTitle className="text-2xl font-bold leading-tight group-hover:text-primary transition-colors">
+                  {challenge.title}
+                </CardTitle>
+
+                {/* Description */}
+                <CardDescription className="text-sm line-clamp-2 min-h-[2.5rem]">
+                  {challenge.description}
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-3 py-4 border-t border-border">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-primary">{formatPoints(challenge.points_base)}</div>
+                    <div className="text-xs text-muted-foreground">Points</div>
+                  </div>
+                  <div className="text-center border-x border-border">
+                    <div className="text-lg font-semibold">{formatTime(challenge.time_cap_minutes)}</div>
+                    <div className="text-xs text-muted-foreground">Time Cap</div>
+                  </div>
+                  {challenge.has_lab ? (
+                    <div className="text-center">
+                      <div className="text-lg font-semibold">🧪</div>
+                      <div className="text-xs text-muted-foreground">Lab</div>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <div className="text-lg font-semibold">{challenge.artifacts.length}</div>
+                      <div className="text-xs text-muted-foreground">Files</div>
+                    </div>
+                  )}
+                  
                 </div>
-                
-                {challenge.has_lab && (
-                  <Badge variant="cyber" className="w-fit">
-                    LAB AVAILABLE
-                  </Badge>
-                )}
-              </div>
-              
-              <div className="pt-2">
-                <Link href={`/challenges/${challenge.slug}`}>
-                  <Button size="lg" className="w-full">
-                    START CHALLENGE
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+
+                {/* Call to Action */}
+                <Button 
+                  className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors" 
+                  variant="outline"
+                >
+                  <span>Start Challenge</span>
+                  <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+                </Button>
+              </CardContent>
+            </Card>
+          </Link>
+            )
+        })}
       </div>
 
       {filteredChallenges.length === 0 && !loading && (
